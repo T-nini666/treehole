@@ -1,0 +1,11 @@
+# Backup files
+*.bak
+
+# Logs
+*.log
+watchdog.log
+
+# IDE / editor
+.codebuddy/
+.idea/
+.vscode/
