@@ -1,11 +1,28 @@
-# Backup files
-*.bak
-
-# Logs
-*.log
+# Local-only scripts (keep on machine, not in repo)
+tv_proxy.ps1
+tv_proxy_watchdog.ps1
+setup_autostart.ps1
+test_api.ps1
+start_silent.vbs
+*.vbs
+start.bat
+start_proxy.bat
 watchdog.log
+
+# Old file
+treehole.html
+treehole.html.bak
+
+# Helper directory
+wechat/
 
 # IDE / editor
 .codebuddy/
 .idea/
 .vscode/
+
+# Backup files
+*.bak
+
+# Logs
+*.log

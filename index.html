@@ -1,0 +1,809 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>树洞 · 电子手帐观影管理系统</title>
+<link rel="stylesheet" href="./css/style.css">
+<script src="./config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body data-theme="ocean">
+<!-- Background Canvas -->
+<canvas id="bgCanvas"></canvas>
+
+<!-- Sidebar Toggle (mobile) -->
+<button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="菜单">☰</button>
+<!-- Sidebar Backdrop (mobile) -->
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+<!-- Sidebar Navigation -->
+<aside class="side-nav" id="sideNav">
+<div class="nav-inner">
+  <button class="sidebar-close-btn" onclick="closeSidebar()" title="关闭菜单">✕</button>
+  <div class="nav-logo" onclick="showPage('home')">🌳 树洞</div>
+  <div class="nav-links">
+    <button class="nav-link active" data-page="home" onclick="showPage('home')">🏠 首页</button>
+    <button class="nav-link" data-page="shelf" onclick="showPage('shelf')">📚 观影架</button>
+    <button class="nav-link" data-page="bookshelf" onclick="showPage('bookshelf')">📖 书架</button>
+    <button class="nav-link" data-page="journal" onclick="showPage('journal')">📒 手帐</button>
+    <button class="nav-link" data-page="checklist" onclick="showPage('checklist')">📋 清单</button>
+    <button class="nav-link" data-page="watchlist" onclick="showPage('watchlist')">🔖 想看</button>
+    <button class="nav-link" data-page="quotations" onclick="showPage('quotations')">💬 摘录</button>
+    <button class="nav-link" data-page="search" onclick="showPage('search')">🔍 搜索</button>
+    <button class="nav-link" data-page="archive" onclick="showPage('archive')">📦 档案馆</button>
+    <button class="nav-link" data-page="reviews" onclick="showPage('reviews')">📝 影评</button>
+    <button class="nav-link" data-page="ai" onclick="openAIChat()">🤖 智能体</button>
+    <button class="nav-link" data-page="readingReport" onclick="showPage('readingReport')">📊 阅读报告</button>
+    <button class="nav-link" data-page="settings" onclick="showPage('settings')">⚙ 设置</button>
+  </div>
+  <div class="theme-switcher">
+    <div class="theme-dot active" data-theme="ocean" onclick="switchTheme('ocean')" title="海洋"></div>
+    <div class="theme-dot" data-theme="spring" onclick="switchTheme('spring')" title="春日"></div>
+    <div class="theme-dot" data-theme="starry" onclick="switchTheme('starry')" title="星空"></div>
+    <div class="theme-dot" data-theme="dusk" onclick="switchTheme('dusk')" title="黄昏"></div>
+    <div class="theme-dot" data-theme="forest" onclick="switchTheme('forest')" title="森林"></div>
+    <div class="theme-dot" data-theme="rain" onclick="switchTheme('rain')" title="雨境"></div>
+    <div class="theme-dot" data-theme="autumn" onclick="switchTheme('autumn')" title="秋日"></div>
+    <div class="theme-dot" data-theme="polar" onclick="switchTheme('polar')" title="极地"></div>
+  </div>
+</div>
+</aside>
+
+<!-- Main Container -->
+<div class="main-container">
+
+<!-- Top Type Filter Bar -->
+<div class="top-filter-bar" id="topFilterBar">
+  <span class="filter-label">🔍 筛选：</span>
+  <button data-type="全部" class="active" onclick="setTopTypeFilter('全部',this)">📂 全部</button>
+  <button data-type="电影" onclick="setTopTypeFilter('电影',this)">🎬 电影</button>
+  <button data-type="电视剧" onclick="setTopTypeFilter('电视剧',this)">📺 电视剧</button>
+  <button data-type="动漫" onclick="setTopTypeFilter('动漫',this)">🎨 动漫</button>
+  <button data-type="书籍" onclick="setTopTypeFilter('书籍',this)">📖 书籍</button>
+  <span style="flex:1;"></span>
+  <input type="text" id="globalSearchInput" placeholder="搜索作品名/标签..." style="padding:6px 14px;border-radius:18px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-family:inherit;font-size:0.78rem;width:140px;outline:none;transition:width 0.3s ease;"
+    onfocus="this.style.width='220px'" onblur="this.style.width='140px'" oninput="globalSearch()" onkeydown="if(event.key==='Escape'){this.value='';globalSearch();this.blur();}">
+  <button class="btn sm" onclick="toggleAdvSearch()" title="高级搜索">🔍 高级</button>
+</div>
+<!-- Advanced Search Overlay -->
+<div class="adv-search-overlay" id="advSearchOverlay" style="display:none;padding:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;margin-bottom:16px;backdrop-filter:blur(8px);animation:fadeInDown 0.3s ease;">
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+    <div style="display:flex;gap:4px;align-items:center;">
+      <span class="tools-label">日期</span>
+      <input type="date" id="advSearchDateFrom" onchange="doAdvSearch()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-family:inherit;font-size:0.7rem;width:120px;">
+      <span style="font-size:0.7rem;color:var(--text-muted);">~</span>
+      <input type="date" id="advSearchDateTo" onchange="doAdvSearch()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-family:inherit;font-size:0.7rem;width:120px;">
+    </div>
+    <div style="display:flex;gap:4px;align-items:center;">
+      <span class="tools-label">评分≥</span>
+      <select id="advSearchRating" onchange="doAdvSearch()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-family:inherit;font-size:0.7rem;">
+        <option value="0">全部</option><option value="1">★</option><option value="2">★★</option><option value="3">★★★</option><option value="4">★★★★</option><option value="5">★★★★★</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:4px;align-items:center;">
+      <span class="tools-label">状态</span>
+      <select id="advSearchStatus" onchange="doAdvSearch()" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-family:inherit;font-size:0.7rem;">
+        <option value="全部">全部</option><option value="已看">已看</option><option value="在看">在看</option><option value="想看">想看</option>
+      </select>
+    </div>
+    <button class="btn sm" onclick="clearAdvSearch()" style="margin-left:auto;">✕ 清除筛选</button>
+  </div>
+</div>
+
+<!-- HOME -->
+<section id="page-home" class="page-section active">
+  <div class="hero enhanced"><h1>树洞 · 观影手帐</h1><p>收藏每一段触动心灵的画面与故事</p></div>
+  <div class="quick-actions">
+    <button class="btn primary" onclick="openAddMovie()">＋ 新增作品</button>
+    <button class="btn accent2" onclick="openAddBook()">＋ 添加书籍</button>
+    <button class="btn accent2" onclick="showPage('shelf')">📚 观影架</button>
+    <button class="btn" onclick="showPage('bookshelf')">📖 书架</button>
+    <button class="btn" onclick="showPage('journal')">📒 写手帐</button>
+    <button class="btn" onclick="showPage('quotations')">💬 摘录</button>
+    <button class="btn" onclick="showPage('search')">🔍 搜索观看</button>
+  </div>
+  <div class="stats-bar enhanced" id="homeStats"></div>
+  <div class="section-title">📋 时间流</div>
+  <div id="homeTimeline"></div>
+</section>
+
+<!-- JOURNAL LIST PAGE -->
+<section id="page-journal" class="page-section">
+  <div class="section-title">📒 手帐 · 观影笔记</div>
+  <div class="journal-toolbar">
+    <button class="primary" onclick="openAddMovie()">＋ 新建作品笔记</button>
+  </div>
+  <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:14px;">点击任意作品封面进入手帐编辑，自由排版图片与文字</p>
+  <div id="journalMovieList" class="results-grid"></div>
+</section>
+
+<!-- SHELF -->
+<section id="page-shelf" class="page-section">
+  <div class="section-title">📚 观影架</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+    <p style="font-size:0.78rem;color:var(--text-muted);">像实体书架一样陈列你的记录，点击封面查看详情</p>
+    <div class="shelf-view-toggle">
+      <button class="active" data-view="grid" onclick="switchShelfView('grid',this)">▦ 宫格</button>
+      <button data-view="list" onclick="switchShelfView('list',this)">☰ 列表</button>
+    </div>
+  </div>
+  <div id="shelfArea" class="shelf-area"></div>
+</section>
+
+<!-- CHECKLIST -->
+<section id="page-checklist" class="page-section">
+  <div class="section-title">📋 观影清单</div>
+  <div class="checklist-toolbar">
+    <select id="checkSort" onchange="renderChecklist()">
+      <option value="date">按日期排序</option>
+      <option value="rating">按评分排序</option>
+      <option value="title">按名称排序</option>
+    </select>
+    <select id="checkType" onchange="renderChecklist()">
+      <option value="全部">全部分类</option>
+      <option value="电影">电影</option>
+      <option value="电视剧">电视剧</option>
+      <option value="动漫">动漫</option>
+    </select>
+    <input type="text" id="checkSearch" placeholder="搜索影片名..." oninput="renderChecklist()">
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="checklist-table" id="checklistTable"><thead><tr><th>日期</th><th>影片名</th><th>分类</th><th>评分</th><th>状态</th><th>操作</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="checklist-summary" id="checkSummary"></div>
+</section>
+
+<!-- WATCHLIST -->
+<section id="page-watchlist" class="page-section">
+  <div class="section-title">🔖 想看清单</div>
+  <div class="watchlist-filters">
+    <button data-status="全部" class="active" onclick="setWatchFilter('全部',this)">全部</button>
+    <button data-status="想看" onclick="setWatchFilter('想看',this)">📌 想看</button>
+    <button data-status="在看" onclick="setWatchFilter('在看',this)">▶ 在看</button>
+    <button data-status="已看" onclick="setWatchFilter('已看',this)">✓ 已看</button>
+    <button class="btn primary sm" onclick="openAddWatchMovie()" style="margin-left:auto;">＋ 添加影片</button>
+  </div>
+  <div class="type-filters" id="watchlistTypeFilters">
+    <button data-type="全部" class="active" onclick="setWatchTypeFilter('全部',this)">📂 全部</button>
+    <button data-type="电影" onclick="setWatchTypeFilter('电影',this)">🎬 电影</button>
+    <button data-type="电视剧" onclick="setWatchTypeFilter('电视剧',this)">📺 电视剧</button>
+    <button data-type="动漫" onclick="setWatchTypeFilter('动漫',this)">🎨 动漫</button>
+    <button data-type="书籍" onclick="setWatchTypeFilter('书籍',this)">📖 书籍</button>
+  </div>
+  <div id="watchlistGrid" class="results-grid"></div>
+</section>
+
+<!-- BOOKSHELF -->
+<section id="page-bookshelf" class="page-section">
+  <div class="section-title">📖 书架</div>
+  <!-- Status filters -->
+  <div class="bs-filters" id="bsStatusFilters">
+    <button data-status="全部" class="active" onclick="setBookshelfStatusFilter('全部',this)">📂 全部</button>
+    <button data-status="在读" onclick="setBookshelfStatusFilter('在读',this)">📖 在读</button>
+    <button data-status="已读" onclick="setBookshelfStatusFilter('已读',this)">✅ 已读</button>
+    <button data-status="想读" onclick="setBookshelfStatusFilter('想读',this)">📌 想读</button>
+  </div>
+  <!-- Tag filter chips -->
+  <div class="bs-tag-filters" id="bsTagFilters" style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;"></div>
+  <!-- Search + sort bar -->
+  <div class="bs-search-bar">
+    <input class="form-input" id="bsSearchInput" placeholder="🔍 搜索书名 / 作者 / 标签..." oninput="renderBookshelf()" style="flex:1;max-width:340px;">
+    <select class="form-select" id="bsSortBy" onchange="renderBookshelf()" style="width:auto;">
+      <option value="date">按日期 ↓</option>
+      <option value="rating">按评分 ↓</option>
+      <option value="title">按书名 ↑</option>
+      <option value="progress">按进度 ↓</option>
+    </select>
+    <button class="btn primary sm" onclick="openAddBook()" style="margin-left:auto;">＋ 添加书籍</button>
+  </div>
+  <div id="bookshelfGrid" class="results-grid"></div>
+</section>
+
+<!-- QUOTATIONS -->
+<section id="page-quotations" class="page-section">
+  <div class="section-title">💬 摘录 · 台词与金句</div>
+  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
+    <select id="quoteMovieSelect" class="form-select" style="width:auto;flex:1;max-width:300px;" onchange="renderQuotations()">
+      <option value="">选择作品添加摘录</option>
+    </select>
+    <button class="btn primary" onclick="openAddQuote()">＋ 添加摘录</button>
+  </div>
+  <div style="display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap;">
+    <button class="btn sm active" onclick="setQuoteTypeFilter('全部',this)">📂 全部</button>
+    <button class="btn sm" onclick="setQuoteTypeFilter('影视',this)">🎬 影视台词</button>
+    <button class="btn sm" onclick="setQuoteTypeFilter('书籍',this)">📖 书籍金句</button>
+  </div>
+  <div id="quotationsList"></div>
+</section>
+
+<!-- TUTORIAL -->
+<section id="page-tutorial" class="page-section">
+  <div class="section-title">📖 新手教程</div>
+  <div class="tutorial-steps">
+    <div class="tutorial-step"><div class="step-num">1</div><div class="step-content"><div class="step-title">添加第一部作品</div><div class="step-desc">点击首页或"想看清单"中的「新增影片」按钮，填写影片名称、分类、封面图等信息，开始建立你的观影库。</div><div class="step-action"><button class="btn primary sm" onclick="openAddMovie()">立即添加</button></div></div></div>
+    <div class="tutorial-step"><div class="step-num">2</div><div class="step-content"><div class="step-title">打开手帐编辑</div><div class="step-desc">在「手帐」页面，点击任意作品封面，进入手帐编辑器。你可以上传截图、添加文本框，像做手帐一样自由排版。</div><div class="step-action"><button class="btn sm" onclick="showPage('journal')">查看手帐</button></div></div></div>
+    <div class="tutorial-step"><div class="step-num">3</div><div class="step-content"><div class="step-title">自由编辑画布</div><div class="step-desc">在编辑器中，点击「添加图片」上传本地截图，点击「添加文字」创建文本框。所有元素都可以拖拽、缩放、旋转、调整层级。</div></div></div>
+    <div class="tutorial-step"><div class="step-num">4</div><div class="step-content"><div class="step-title">整理观影架</div><div class="step-desc">在「观影架」页面，所有作品会像实体书架一样排列。按分类自动分组，点击封面可直接跳转到手帐编辑。</div><div class="step-action"><button class="btn sm" onclick="showPage('shelf')">看观影架</button></div></div></div>
+    <div class="tutorial-step"><div class="step-num">5</div><div class="step-content"><div class="step-title">记录摘录与清单</div><div class="step-desc">在「摘录」页面收集经典台词，按作品分类归档。在「清单」页面查看完整的观影统计，支持按日期、评分排序。</div></div></div>
+    <div class="tutorial-step"><div class="step-num">6</div><div class="step-content"><div class="step-title">导出你的手帐</div><div class="step-desc">编辑完成后，点击编辑器中的「导出PNG」按钮，即可将当前页面保存为高清图片。你还可以无限复制页面，分章节记录观影笔记。</div></div></div>
+  </div>
+  <div style="text-align:center;margin-top:24px;">
+    <button class="btn primary" onclick="showPage('journal')">开始使用</button>
+  </div>
+</section>
+
+<!-- SETTINGS -->
+<section id="page-settings" class="page-section">
+  <div class="section-title">⚙ 个人中心</div>
+  <div class="settings-grid">
+    <div class="settings-card">
+      <h4>📊 年度总结</h4>
+      <div id="yearlySummary"></div>
+    </div>
+    <div class="settings-card">
+      <h4>🏷 标签管理</h4>
+      <div id="tagCloud"></div>
+    </div>
+    <div class="settings-card full-width">
+      <h4>🎨 主题配色</h4>
+      <div class="preset-grid" id="colorPresets"></div>
+    </div>
+    <div class="settings-card full-width">
+      <h4>💾 数据管理</h4>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn" onclick="exportAllData()">📤 导出全部数据</button>
+        <button class="btn" onclick="document.getElementById('importDataFile').click()">📥 导入数据</button>
+        <input type="file" id="importDataFile" style="display:none" accept=".json" onchange="importAllData(event)">
+        <button class="btn danger" onclick="if(confirm('确定清除所有数据？此操作不可撤销！'))clearAllData()">🗑 清除数据</button>
+      </div>
+    </div>
+    <div class="settings-card full-width">
+      <h4>🤖 AI 智能体设置</h4>
+      <div class="api-settings-section">
+        <div class="form-group">
+          <label class="form-label">API 地址 (OpenAI 兼容接口)</label>
+          <input class="form-input" type="text" id="apiEndpoint" placeholder="https://api.openai.com/v1/chat/completions">
+        </div>
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="form-input" type="password" id="apiKey" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型名称</label>
+          <input class="form-input" type="text" id="apiModel" placeholder="gpt-3.5-turbo">
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn sm primary" onclick="saveApiSettings()">💾 保存配置</button>
+          <button class="btn sm" onclick="testApiConnection()">🔗 测试连接</button>
+        </div>
+        <div id="apiStatus" style="margin-top:8px;font-size:0.7rem;"></div>
+      </div>
+    </div>
+    <div class="settings-card">
+      <h4>📖 教程</h4>
+      <button class="btn" onclick="showPage('tutorial')">查看完整教程 →</button>
+    </div>
+  </div>
+</section>
+
+<!-- REVIEWS -->
+<section id="page-reviews" class="page-section">
+  <div class="section-title">📝 影评</div>
+  <div class="reviews-toolbar">
+    <span style="font-size:0.78rem;color:var(--text-muted);" id="reviewsCount">共 0 篇影评</span>
+    <select id="reviewArchiveFilter" onchange="renderReviews()" style="padding:5px 10px;border-radius:12px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-family:inherit;font-size:0.72rem;">
+      <option value="all">全部影评</option>
+      <option value="active">未归档</option>
+      <option value="archived">已归档</option>
+    </select>
+    <button class="btn sm" onclick="batchArchiveReviews()">📦 批量归档</button>
+    <button class="btn sm" onclick="batchRestoreReviews()">📂 批量恢复</button>
+    <button class="btn primary sm" onclick="openNewReviewDialog()">✏️ 写影评</button>
+  </div>
+  <div id="reviewsList" class="reviews-empty">
+    <span style="font-size:36px;display:block;margin-bottom:8px;">📝</span>
+    <p>还没有影评</p>
+    <p style="font-size:0.7rem;">点击「写影评」选择影片开始写作</p>
+  </div>
+</section>
+
+<!-- SEARCH -->
+<section id="page-search" class="page-section">
+  <div class="section-title">🔍 媒体搜索</div>
+  <div class="media-search-tabs">
+    <button class="active" data-media-type="video" onclick="switchSearchTab('video',this)">📺 影视剧</button>
+    <button data-media-type="novel" onclick="switchSearchTab('novel',this)">📖 书籍</button>
+  </div>
+  <div class="media-search-input-area" style="padding:12px 0;">
+    <input type="text" id="mainSearchInput" placeholder=">> 输入关键词搜索片库..."
+      onkeydown="if(event.key==='Enter')mainSearch()">
+    <button onclick="mainSearch()">🔍</button>
+  </div>
+  <div class="media-search-proxy-status" id="mainProxyStatus" style="display:none;"></div>
+  <div class="media-search-results" id="mainSearchResults" style="padding:0;">
+    <div class="search-empty">
+      <span style="font-size:40px;display:block;margin-bottom:12px;">🎬</span>
+      <p>搜索你的个人媒体库</p>
+      <p style="font-size:0.72rem;">支持电影 · 电视剧 · 动漫 · 书籍</p>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHIVE -->
+<section id="page-archive" class="page-section">
+  <div class="section-title">📦 档案馆 · 截图与录制</div>
+  <div class="archive-toolbar">
+    <div class="month-nav">
+      <button onclick="archivePrevMonth()">◀</button>
+      <span class="month-label" id="archiveMonthLabel">2026年5月</span>
+      <button onclick="archiveNextMonth()">▶</button>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn sm" onclick="importArchiveFile()">📤 电脑导入</button>
+      <button class="btn sm primary" onclick="archiveToday()">📅 今天</button>
+    </div>
+  </div>
+  <table class="archive-calendar" id="archiveCalendar"></table>
+  <div id="archiveEmpty" class="archive-empty" style="display:none;">
+    <span class="empty-icon">📦</span>
+    <p>档案馆还没有内容</p>
+    <p style="font-size:0.7rem;">播放视频时使用 📷截图 / ⏺录制 即可存入</p>
+  </div>
+</section>
+
+<!-- READING REPORT -->
+<section id="page-readingReport" class="page-section">
+  <div class="section-title">📊 年度阅读报告</div>
+  <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <select id="readingReportYear" onchange="renderReadingReport()" style="padding:6px 12px;border-radius:10px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-family:inherit;font-size:0.8rem;"></select>
+    <button class="btn sm primary" onclick="renderReadingReport()">🔄 刷新</button>
+  </div>
+  <div id="readingReportContent"></div>
+</section>
+
+</div>
+
+
+<!-- Archive Detail Overlay -->
+<div class="archive-detail-overlay" id="archiveDetailOverlay">
+  <div class="archive-detail-box">
+    <div class="archive-detail-header">
+      <div class="archive-detail-title" id="archiveDetailTitle">📅 详情</div>
+      <button class="archive-detail-close" onclick="closeArchiveDetail()">✕</button>
+    </div>
+    <div class="archive-detail-grid" id="archiveDetailGrid"></div>
+  </div>
+</div>
+
+<!-- Archive Move Date Picker Modal -->
+<div class="archive-move-overlay" id="archiveMoveOverlay">
+  <div class="archive-move-box">
+    <div class="archive-move-header">
+      <span class="archive-move-title">📅 移动到其他日期</span>
+      <button class="archive-move-close" onclick="closeMoveArchiveItemDialog()">✕</button>
+    </div>
+    <div class="archive-move-body">
+      <p class="archive-move-info" id="archiveMoveInfo"></p>
+      <label class="form-label">目标日期</label>
+      <input type="date" class="form-input" id="archiveMoveDate">
+      <div class="archive-move-actions">
+        <button class="btn" onclick="closeMoveArchiveItemDialog()">取消</button>
+        <button class="btn primary" onclick="confirmMoveArchiveItem()">确认移动</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Archive Name Dialog -->
+<div class="modal-overlay" id="archiveNameModal">
+  <div class="modal-box" style="max-width:380px;">
+    <div class="modal-header">
+      <div class="modal-title" id="archiveNameModalTitle">💾 保存到档案馆</div>
+      <button class="modal-close" onclick="closeArchiveNameModal(false)">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">命名</label>
+      <input class="form-input" id="archiveNameInput" placeholder="为文件取个名字..."
+        onkeydown="if(event.key==='Enter')confirmArchiveName()">
+    </div>
+    <div style="display:flex;justify-content:center;gap:10px;margin-top:12px;">
+      <button class="btn" onclick="closeArchiveNameModal(false)">跳过</button>
+      <button class="btn primary" onclick="confirmArchiveName()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="detail-overlay" id="detailOverlay">
+<div class="detail-card" id="detailCard"></div>
+</div>
+
+<!-- Review Detail Overlay -->
+<div class="review-detail-overlay" id="reviewDetailOverlay">
+<div class="review-detail-box" id="reviewDetailBox"></div>
+</div>
+
+<!-- Metadata Edit Mini Modal -->
+<div class="rd-meta-edit-overlay" id="rdMetaEditOverlay">
+<div class="rd-meta-edit-box" id="rdMetaEditBox"></div>
+</div>
+
+<!-- Add Watch Log Dialog -->
+<div class="rd-meta-edit-overlay" id="rdWatchLogOverlay">
+<div class="rd-meta-edit-box" id="rdWatchLogBox"></div>
+</div>
+
+<!-- Share Poster Overlay -->
+<div class="share-poster-overlay" id="sharePosterOverlay" onclick="if(event.target===this)closeSharePoster()">
+<div class="share-poster-box" id="sharePosterBox"></div>
+</div>
+
+<!-- Archive Picker for Journal/Cover Import -->
+<div class="archive-picker-overlay" id="archivePickerOverlay">
+<div class="archive-picker-box">
+  <div class="archive-picker-header">
+    <div class="archive-picker-title" id="archivePickerTitle">📦 从档案馆导入</div>
+    <button class="archive-picker-close" onclick="closeArchivePicker()">✕</button>
+  </div>
+  <div class="archive-picker-actions" id="archivePickerActions">
+    <button class="pc-import" id="archivePickerPcBtn">💻 电脑导入</button>
+    <input type="file" id="archivePickerCameraInput" accept="image/*" capture="environment" onchange="handleArchivePickerCameraUpload(event)" style="display:none;">
+    <input type="file" id="archivePickerGalleryInput" accept="image/*" onchange="handleArchivePickerGalleryUpload(event)" style="display:none;">
+    <button class="pc-import" id="archivePickerCameraBtn" onclick="document.getElementById('archivePickerCameraInput').click()" title="拍照上传">📷 拍照</button>
+    <button class="pc-import" id="archivePickerGalleryBtn" onclick="document.getElementById('archivePickerGalleryInput').click()" title="从相册选择">🖼 相册</button>
+    <span style="font-size:0.68rem;color:var(--text-muted);padding:4px 0;">或点击下方缩略图直接插入</span>
+  </div>
+  <div class="archive-picker-subtitle" id="archivePickerCount">加载中...</div>
+  <div class="archive-picker-grid" id="archivePickerGrid"></div>
+  <div class="archive-picker-empty" id="archivePickerEmpty" style="display:none;">
+    <span style="font-size:36px;display:block;margin-bottom:8px;">📷</span>
+    <p>档案馆暂无截图</p>
+    <p style="font-size:0.7rem;">播放视频时使用 📷截图 即可存入</p>
+  </div>
+</div>
+</div>
+
+<!-- Review Editor Modal -->
+<div class="review-editor-overlay" id="reviewEditorOverlay">
+<div class="review-editor-box">
+  <div class="review-editor-header">
+    <div class="review-editor-title" id="reviewEditorTitle">✏️ 写影评</div>
+    <button class="review-editor-close" onclick="closeReviewEditor()">✕</button>
+  </div>
+  <div class="review-editor-body">
+    <div class="form-group">
+      <label class="form-label">选择影片</label>
+      <select class="form-input" id="reviewMovieSelect" onchange="onReviewMovieChange()"><option value="">-- 选择影片 --</option></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">影评标题</label>
+      <input class="form-input" id="reviewTitle" placeholder="为你的影评起个标题...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">评分</label>
+      <div class="rating-stars" id="reviewRating"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">影评正文</label>
+      <textarea class="form-input" id="reviewContent" placeholder="写下你的观影感受、思考与评论..."></textarea>
+    </div>
+  </div>
+  <div class="review-editor-footer">
+    <button class="btn" onclick="closeReviewEditor()">取消</button>
+    <button class="btn primary" id="reviewSaveBtn" onclick="saveReview()">💾 保存影评</button>
+  </div>
+</div>
+</div>
+
+<!-- AI Chat Overlay -->
+<div class="ai-chat-overlay" id="aiChatOverlay">
+<div class="ai-chat-box">
+  <div class="ai-chat-header">
+    <div class="ai-chat-header-info">
+      <div class="ai-chat-title">🤖 智能体对话</div>
+      <div class="ai-chat-subtitle" id="aiChatSubtitle"></div>
+    </div>
+    <button class="ai-chat-close" onclick="closeAIChat()">✕</button>
+  </div>
+  <div class="ai-chat-messages" id="aiChatMessages">
+    <div class="ai-chat-msg system" id="aiChatWelcome">加载中...</div>
+  </div>
+  <div id="aiChatLoading" class="ai-chat-loading" style="display:none;">
+    <span>智能体思考中</span>
+    <div class="dot-pulse"><span></span><span></span><span></span></div>
+  </div>
+  <div class="ai-chat-toolbar">
+    <button onclick="clearAIChat()" class="clear-btn">🗑 清空对话</button>
+    <button onclick="retryAIChat()">🔄 重试最后一条</button>
+    <span class="ai-chat-hint">配置 API 后可使用智能体对话</span>
+  </div>
+  <div class="ai-chat-input-area">
+    <textarea class="ai-chat-input" id="aiChatInput" placeholder="输入消息与智能体讨论这篇影评..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIChat();}"></textarea>
+    <button class="ai-chat-send" id="aiChatSendBtn" onclick="sendAIChat()" title="发送">➤</button>
+  </div>
+</div>
+</div>
+
+<!-- Journal Editor Overlay -->
+<div class="journal-overlay" id="journalOverlay">
+<div class="journal-box">
+  <div class="journal-head">
+    <div><span class="modal-title">📒 手帐编辑</span><span class="info" id="journalInfo"></span></div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn sm" onclick="toggleExportRes()">📥 导出 (HD)</button>
+      <button class="btn sm" onclick="duplicateJournalPage()">📄 复制页面</button>
+      <button class="btn sm" onclick="addJournalPage()">＋ 新页面</button>
+      <button class="modal-close" onclick="closeJournal()">✕</button>
+    </div>
+  </div>
+  <div class="journal-tools">
+    <span class="tools-label">编辑操作</span>
+    <div class="tools-group">
+      <button onclick="undoJournal()" id="btnUndo" disabled title="撤销 (Ctrl+Z)">↩ 撤销</button>
+      <button onclick="redoJournal()" id="btnRedo" disabled title="重做 (Ctrl+Y)">↪ 重做</button>
+    </div>
+    <span class="tools-sep"></span>
+    <span class="tools-label">内容添加</span>
+    <div class="tools-group">
+      <button onclick="addImageToJournal()">🖼 图片</button>
+      <button onclick="addTextToJournal()">T 文字</button>
+      <button onclick="toggleDrawMode()" id="btnDrawMode">🎨 画笔</button>
+      <button onclick="openArchivePicker()">📦 导入</button>
+    </div>
+    <span class="tools-sep"></span>
+    <span class="tools-label">层级管理</span>
+    <div class="tools-group">
+      <button onclick="bringToFront()">⬆ 置顶</button>
+      <button onclick="sendToBack()">⬇ 置底</button>
+      <button onclick="deleteSelectedElements()">🗑 删除</button>
+    </div>
+    <span class="tools-sep"></span>
+    <span class="tools-label">页面</span>
+    <div class="tools-group">
+      <button onclick="cycleJournalPaper()" id="btnPaperMode" title="切换纸张背景">📝 横线纸</button>
+      <button onclick="clearJournalPage()">🧹 清除</button>
+    </div>
+    <span style="font-size:0.7rem;color:var(--text-muted);margin-left:6px;">💡 触屏/拖拽移动 · 角标缩放 · 旋转点旋转</span>
+    <input type="file" id="journalImageInput" accept="image/*" multiple onchange="handleJournalImageUpload(event)" style="display:none;">
+    <input type="file" id="journalCameraInput" accept="image/*" capture="environment" onchange="handleJournalImageUpload(event)" style="display:none;">
+  </div>
+  <!-- Floating formatting bar for selected elements -->
+  <div class="journal-fmt-bar" id="journalFmtBar" style="display:none;">
+    <span class="tools-label" style="margin-right:4px;">格式</span>
+    <div class="tools-group" id="fmtTextGroup" style="display:none;">
+      <button onclick="fmtBold()" id="fmtBold" title="加粗">B</button>
+      <button onclick="fmtItalic()" id="fmtItalic" title="斜体"><i>I</i></button>
+      <input type="color" id="fmtColor" value="#333333" onchange="fmtColor(this.value)" title="字体颜色" style="width:26px;height:26px;border:none;cursor:pointer;border-radius:6px;padding:1px;background:var(--input-bg);">
+      <button onclick="fmtColorPreset('#333333')" title="深灰">Aa</button>
+      <button onclick="fmtColorPreset('#c05038')" title="复古红" style="color:#c05038;">Aa</button>
+      <button onclick="fmtColorPreset('#4088c0')" title="蓝">Aa</button>
+      <button onclick="fmtColorPreset('#60a058')" title="绿">Aa</button>
+      <button onclick="fmtColorPreset('#a070c8')" title="紫">Aa</button>
+    </div>
+    <span class="tools-sep fmt-text-only" style="display:none;"></span>
+    <div class="tools-group" id="fmtImageGroup" style="display:none;">
+      <button onclick="fmtImgStyle('none')" title="原始">📷 原图</button>
+      <button onclick="fmtImgStyle('rounded')" title="圆角">⭕ 圆角</button>
+      <button onclick="fmtImgStyle('shadow')" title="阴影">🖼 阴影</button>
+      <button onclick="fmtImgStyle('polaroid')" title="拍立得">📸 拍立得</button>
+      <button onclick="fmtImgStyle('blurBg')" title="背景柔化">🌫 柔化</button>
+      <button onclick="fmtImgStyle('sepia')" title="复古">🎞 复古</button>
+    </div>
+  </div>
+  <!-- Drawing toolbar -->
+  <div class="journal-draw-bar" id="journalDrawBar" style="display:none;">
+    <span class="tools-label">画笔</span>
+    <div class="tools-group">
+      <button onclick="setBrushType('pencil')" id="btnPencil" class="brush-btn active" title="铅笔">✏️</button>
+      <button onclick="setBrushType('marker')" id="btnMarker" class="brush-btn" title="马克笔">🖊</button>
+      <button onclick="setBrushType('highlighter')" id="btnHighlighter" class="brush-btn" title="荧光笔">🖍</button>
+      <button onclick="setBrushType('eraser')" id="btnEraser" class="brush-btn" title="橡皮擦">🧹</button>
+    </div>
+    <span class="tools-sep"></span>
+    <input type="color" id="drawColor" value="#333333" oninput="setDrawColor(this.value)" title="画笔颜色" style="width:28px;height:28px;border:none;cursor:pointer;border-radius:6px;padding:1px;background:var(--input-bg);">
+    <span class="tools-sep"></span>
+    <span class="tools-label">粗细</span>
+    <input type="range" id="drawThickness" min="1" max="30" value="3" oninput="setDrawThickness(this.value)" style="width:80px;cursor:pointer;">
+    <span style="font-size:0.75rem;color:var(--text-muted);min-width:24px;" id="drawThicknessLabel">3px</span>
+    <span class="tools-sep"></span>
+    <div class="tools-group">
+      <button onclick="undoDrawStroke()" title="撤销一笔">↩ 撤销</button>
+      <button onclick="clearDrawCanvas()" title="清空画布">🗑 清除</button>
+    </div>
+    <span class="tools-sep"></span>
+    <div class="tools-group">
+      <button onclick="exitDrawMode(true)" class="btn primary" title="保存涂鸦到画布">✅ 完成</button>
+      <button onclick="exitDrawMode(false)" title="取消并丢弃涂鸦">✕ 取消</button>
+    </div>
+  </div>
+  <!-- Template bar -->
+  <div class="journal-tools" style="border-top:none;padding-top:2px;">
+    <span class="tools-label">模板</span>
+    <div class="tools-group" id="journalTemplateBtns">
+      <button onclick="applyJournalTemplate('review')" title="影评模板">📝 影评</button>
+      <button onclick="applyJournalTemplate('quote')" title="金句摘录">💬 金句</button>
+      <button onclick="applyJournalTemplate('poster')" title="海报">🎬 海报</button>
+      <button onclick="applyJournalTemplate('diary')" title="日记">📔 日记</button>
+    </div>
+    <span class="tools-sep"></span>
+    <span class="tools-label">导出</span>
+    <div class="tools-group">
+      <button onclick="exportJournalPage()">📥 PNG</button>
+      <button onclick="exportJournalPDF()">📄 PDF</button>
+      <button onclick="exportSharePoster()">📢 分享海报</button>
+    </div>
+  </div>
+  <div class="journal-main">
+    <div class="journal-sidebar" id="journalSidebar"></div>
+    <div class="journal-editor-area">
+      <div class="journal-canvas-main">
+        <div class="journal-page-area" id="journalPageArea">
+          <div id="journalElements"></div>
+          <canvas id="drawCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;display:none;z-index:9999;cursor:crosshair;pointer-events:none;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Add/Edit Movie Modal -->
+<div class="modal-overlay" id="addMovieModal">
+<div class="modal-box wide">
+  <div class="modal-header">
+    <div class="modal-title" id="movieModalTitle">新增影片</div>
+    <button class="modal-close" onclick="closeModal('addMovieModal')">✕</button>
+  </div>
+  <div class="form-row"><div class="form-group"><label class="form-label">影片名称</label><input class="form-input" id="mTitle" placeholder="输入影片名称"></div><div class="form-group"><label class="form-label">分类</label><select class="form-select" id="mType" onchange="onTypeChange()"><option>电影</option><option>电视剧</option><option>动漫</option><option>书籍</option></select></div></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">观影日期</label><input class="form-input" type="date" id="mDate"></div><div class="form-group"><label class="form-label">观影状态</label><select class="form-select" id="mStatus"><option>已看</option><option>想看</option><option>在看</option></select></div></div>
+  <div class="form-group"><label class="form-label">封面图 URL（可选，或下方上传本地图片）</label><input class="form-input" id="mCover" placeholder="https://..."><div style="margin-top:6px;"><input type="file" id="mCoverFile" accept="image/*" onchange="handleCoverUpload(event)" style="display:none;"><input type="file" id="mCoverCamera" accept="image/*" capture="environment" onchange="handleCoverUpload(event)" style="display:none;"><div class="camera-upload-btns"><button class="cam-btn" onclick="document.getElementById('mCoverFile').click()">📤 相册</button><button class="cam-btn camera-btn" onclick="document.getElementById('mCoverCamera').click()">📷 拍照</button><button class="cam-btn" onclick="openArchiveCoverPicker()">📦 档案馆</button></div><img id="mCoverPreview" style="width:60px;height:80px;object-fit:cover;border-radius:6px;display:none;border:1px solid var(--border);margin-top:6px;"></div></div>
+  <div class="form-group"><label class="form-label">评分</label><div id="mRating" style="display:flex;gap:4px;font-size:1.3rem;cursor:pointer;"></div></div>
+  <div class="form-group"><label class="form-label">标签</label><div class="tag-input-area" id="mTagArea" onclick="document.getElementById('mTagInput').focus()"><input id="mTagInput" placeholder="输入标签按回车..." onkeydown="handleMTag(event)"></div></div>
+  <div class="form-group"><label class="form-label">短评</label><textarea class="form-textarea" id="mReview" placeholder="写下你的感想..."></textarea></div>
+  <!-- Book-specific fields (shown only when type=书籍) -->
+  <div id="bookFields" style="display:none;border:1px dashed var(--border);border-radius:10px;padding:12px;margin-top:8px;background:var(--tag-bg);">
+    <div style="font-size:0.75rem;color:var(--accent);margin-bottom:8px;font-weight:600;">📖 书籍专属信息</div>
+    <div class="form-row"><div class="form-group"><label class="form-label">作者</label><input class="form-input" id="mAuthor" placeholder="输入作者名"></div><div class="form-group"><label class="form-label">出版社</label><input class="form-input" id="mPublisher" placeholder="出版社名称（选填）"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">出版年份</label><input class="form-input" id="mPublishYear" type="number" placeholder="如 2023" min="1000" max="2099" style="max-width:120px;"></div><div class="form-group"><label class="form-label">阅读进度</label><div style="display:flex;gap:4px;align-items:center;"><input class="form-input" id="mCurrentPage" type="number" placeholder="页码" min="0" style="width:70px;"><span style="font-size:0.7rem;color:var(--text-muted);">/</span><input class="form-input" id="mPageCount" type="number" placeholder="总页数" min="0" style="width:70px;"></div></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">章节进度</label><div style="display:flex;gap:4px;align-items:center;"><input class="form-input" id="mCurrentChapter" type="number" placeholder="章节" min="0" style="width:70px;"><span style="font-size:0.7rem;color:var(--text-muted);">/</span><input class="form-input" id="mChapterCount" type="number" placeholder="总章节" min="0" style="width:70px;"></div></div><div class="form-group"><label class="form-label">上传 .txt 电子书</label><div style="display:flex;gap:6px;align-items:center;"><input type="file" id="mTxtFile" accept=".txt" onchange="handleTxtUpload(event)" style="display:none;"><button class="btn sm" onclick="document.getElementById('mTxtFile').click()">📄 选择文件</button><span id="mTxtFileName" style="font-size:0.65rem;color:var(--text-muted);"></span></div></div></div>
+  </div>
+  <div style="display:flex;justify-content:center;gap:10px;margin-top:16px;">
+    <button class="btn" onclick="closeModal('addMovieModal')">取消</button>
+    <button class="btn primary" onclick="saveMovie()">保存</button>
+  </div>
+</div>
+</div>
+
+<!-- Add Quote Modal -->
+<div class="modal-overlay" id="addQuoteModal">
+<div class="modal-box">
+  <div class="modal-header"><div class="modal-title">添加摘录</div><button class="modal-close" onclick="closeModal('addQuoteModal')">✕</button></div>
+  <div class="form-group"><label class="form-label">选择作品</label><select class="form-select" id="qMovieSelect"></select></div>
+  <div class="form-group"><label class="form-label">摘录内容</label><textarea class="form-textarea" id="qContent" placeholder="写下触动人心的台词、句子..."></textarea></div>
+  <div style="display:flex;justify-content:center;gap:10px;margin-top:12px;">
+    <button class="btn" onclick="closeModal('addQuoteModal')">取消</button>
+    <button class="btn primary" onclick="saveQuote()">保存摘录</button>
+  </div>
+</div>
+</div>
+
+<!-- Book Actions Popup -->
+<div class="book-actions-overlay" id="bookActionsOverlay" onclick="if(event.target===this)closeBookActions()">
+  <div class="book-actions-popup">
+    <h3 id="bookActionsTitle">📖 书籍操作</h3>
+    <button class="ba-btn" onclick="openJournalForMovie(currentBookActionsId);closeBookActions()"><span class="ba-icon">📒</span> 进入手帐笔记</button>
+    <button class="ba-btn" id="btnOpenReader" onclick="openBookReader(currentBookActionsId);closeBookActions()"><span class="ba-icon">📖</span> 打开阅读器</button>
+    <button class="ba-btn" onclick="openEditMovie(currentBookActionsId);closeBookActions()"><span class="ba-icon">✏️</span> 编辑书籍信息</button>
+    <button class="ba-close" onclick="closeBookActions()">取消</button>
+  </div>
+</div>
+
+<!-- Book Reader Overlay -->
+<div class="modal-overlay" id="bookReaderOverlay" style="z-index:500;">
+  <div class="book-reader-container" id="bookReaderContainer">
+    <div class="br-header">
+      <div class="br-title" id="brTitle">📖 阅读器</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn sm" onclick="updateReaderProgress()" title="保存进度">💾 保存进度</button>
+        <button class="modal-close" onclick="closeBookReader()">✕</button>
+      </div>
+    </div>
+    <div class="br-controls">
+      <div class="br-ctrl-group">
+        <span class="tools-label">字号</span>
+        <button onclick="changeReaderFontSize(-1)">A-</button>
+        <span id="brFontSizeLabel" style="font-size:0.7rem;color:var(--text-muted);min-width:28px;text-align:center;">16px</span>
+        <button onclick="changeReaderFontSize(1)">A+</button>
+      </div>
+      <span class="tools-sep"></span>
+      <div class="br-ctrl-group">
+        <span class="tools-label">行距</span>
+        <button onclick="changeReaderLineHeight(-0.2)">↕-</button>
+        <span id="brLineHeightLabel" style="font-size:0.7rem;color:var(--text-muted);min-width:24px;text-align:center;">1.8</span>
+        <button onclick="changeReaderLineHeight(0.2)">↕+</button>
+      </div>
+      <span class="tools-sep"></span>
+      <div class="br-ctrl-group">
+        <span class="tools-label">背景</span>
+        <button onclick="setReaderBg('#faf8f0')" style="background:#faf8f0;width:20px;height:20px;border-radius:50%;border:1px solid #ccc;"></button>
+        <button onclick="setReaderBg('#f4eed8')" style="background:#f4eed8;width:20px;height:20px;border-radius:50%;border:1px solid #ccc;"></button>
+        <button onclick="setReaderBg('#2a2a32')" style="background:#2a2a32;width:20px;height:20px;border-radius:50%;border:1px solid #555;"></button>
+        <button onclick="setReaderBg('#1a1a22')" style="background:#1a1a22;width:20px;height:20px;border-radius:50%;border:1px solid #555;"></button>
+      </div>
+      <span class="tools-sep"></span>
+      <div class="br-ctrl-group">
+        <button onclick="toggleReaderNight()" id="btnReaderNight" title="日间/夜间模式">🌙 夜间</button>
+      </div>
+    </div>
+    <div class="br-progress-bar" id="brProgressBarOuter"><div class="br-progress-fill" id="brProgressFill"></div></div>
+    <div class="br-content" id="brContent">
+      <div class="br-empty" id="brEmpty">📄 尚未上传电子书文件<br><span style="font-size:0.7rem;color:var(--text-muted);">请在编辑书籍时上传 .txt 文件</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide-in Media Search Panel -->
+<div class="media-search-overlay" id="mediaSearchOverlay" onclick="closeMediaSearch()"></div>
+<div class="media-search-panel" id="mediaSearchPanel">
+  <div class="media-search-header">
+    <button class="back-btn" onclick="closeMediaSearch()">✕</button>
+    <div class="search-title" id="mediaSearchTitle">📺 媒体搜索</div>
+  </div>
+  <div class="media-search-tabs" id="panelMediaTabs">
+    <button class="active" data-media-type="video" onclick="switchSearchTab('video',this)">📺 影视剧</button>
+    <button data-media-type="novel" onclick="switchSearchTab('novel',this)">📖 书籍</button>
+  </div>
+  <div class="media-search-input-area">
+    <input type="text" id="mediaSearchInput" placeholder=">> 输入关键词搜索..."
+      onkeydown="if(event.key==='Enter')tvSearch()">
+    <button onclick="tvSearch()">🔍</button>
+  </div>
+  <div class="media-search-proxy-status" id="proxyStatus" style="display:none;"></div>
+  <div class="media-search-results" id="mediaSearchResults">
+    <div class="search-empty">
+      <span style="font-size:40px;display:block;margin-bottom:12px;">🌙</span>
+      <p>输入关键词搜索片库</p>
+      <p style="font-size:0.7rem;">搜索你的个人媒体库 · 无需额外登录</p>
+    </div>
+  </div>
+</div>
+
+<!-- Player Overlay -->
+<div class="player-overlay" id="playerOverlay">
+  <div class="player-modal">
+    <div class="player-header">
+      <div class="player-title" id="playerTitle">📺 播放器</div>
+      <button class="player-close" onclick="closePlayer()">✕</button>
+    </div>
+    <div class="player-body">
+      <div class="player-loading" id="playerLoading">⏳ 加载播放地址...</div>
+      <div class="player-error" id="playerError" style="display:none;"></div>
+      <div class="player-screen" id="playerScreen" style="display:none;">
+        <video id="playerVideo" controls preload="auto" playsinline controlsList="nofullscreen"
+          onloadedmetadata="onVideoReady()"
+          onerror="onVideoError()"></video>
+        <!-- Fullscreen floating toolbar (visible when #playerScreen is in browser fullscreen) -->
+        <div class="player-fs-toolbar" id="playerFsToolbar">
+          <button class="player-fs-btn" id="btnFsScreenshot" onclick="takeScreenshot()" title="截图 (S键)">📷 截图</button>
+          <button class="player-fs-btn" id="btnFsRecord" onclick="toggleRecording()" title="录制 (R键)">⏺ 录制</button>
+          <span class="player-fs-timer" id="fsRecordTimer">● 00:00</span>
+          <button class="player-fs-btn fs-exit" id="btnFsExit" onclick="exitPlayerFullscreen()" title="退出全屏 (Esc)">✕ 退出</button>
+        </div>
+      </div>
+      <div class="player-controls">
+        <button class="player-ctrl-btn" id="btnScreenshot" onclick="takeScreenshot()" title="截取当前画面 (S键)">📷 截图</button>
+        <button class="player-ctrl-btn" id="btnRecord" onclick="toggleRecording()" title="录制视频片段 (R键)">⏺ 录制</button>
+        <button class="player-ctrl-btn" id="btnFullWin" onclick="togglePlayerFullscreen()" title="窗口全屏模式">⛶ 全屏</button>
+        <span class="player-info-text" id="playerInfo"></span>
+        <span class="player-info-text" id="recordTimer" style="display:none;color:var(--danger);margin-left:8px;">● 00:00</span>
+      </div>
+      <div class="episode-selector" id="episodeSelector" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+<script src="./js/main.js"></script>
+</body>
+</html>
