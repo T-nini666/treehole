@@ -9,8 +9,7 @@ start.bat
 start_proxy.bat
 watchdog.log
 
-# Old file
-treehole.html
+# Old backup
 treehole.html.bak
 
 # Helper directory

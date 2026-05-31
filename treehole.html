@@ -4309,7 +4309,7 @@ function openPlayer(item) {
   if (playUrl) {
     console.log('[Player] Using play URL from search result:', playUrl);
     if (playUrl.endsWith('.m3u8')) {
-      loadHls(`http://localhost:8765/api/m3u8?url=${encodeURIComponent(playUrl)}`);
+      loadHls(`${PROXY}/api/m3u8?url=${encodeURIComponent(playUrl)}`);
     } else {
       loadVideo(playUrl);
     }
@@ -4342,7 +4342,7 @@ function openPlayer(item) {
       if (!url) throw new Error('未在返回数据中找到播放地址');
       console.log('[Player] Play URL from detail:', url);
       if (url.endsWith('.m3u8')) {
-        loadHls(`http://localhost:8765/api/m3u8?url=${encodeURIComponent(url)}`);
+        loadHls(`${PROXY}/api/m3u8?url=${encodeURIComponent(url)}`);
       } else {
         loadVideo(url);
       }
@@ -4394,7 +4394,7 @@ function playEpisode(index) {
     let tried = false;
     const fallbacks = [
       'https://' + epUrl.replace(/^\/+/, ''),
-      'http://localhost:8765/api/m3u8?url=' + encodeURIComponent(epUrl.startsWith('http') ? epUrl : 'https://' + epUrl.replace(/^\/+/, ''))
+      PROXY + '/api/m3u8?url=' + encodeURIComponent(epUrl.startsWith('http') ? epUrl : 'https://' + epUrl.replace(/^\/+/, ''))
     ];
     for (const fb of fallbacks) {
       if (fb && fb.length > 10) {
