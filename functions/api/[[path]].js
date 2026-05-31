@@ -33,7 +33,7 @@ async function login() {
   }
 }
 
-// Proxied fetch with auto-relogin on 401
+// Proxied fetch with auto-relogin on 401 (for moontv upstream API calls)
 async function proxyFetch(url, opts = {}, retryLogin = true) {
   const headers = new Headers(opts.headers || {});
   headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
@@ -54,6 +54,33 @@ async function proxyFetch(url, opts = {}, retryLogin = true) {
       h2.set('Cookie', sessionCookie);
       resp = await fetch(url, { ...opts, headers: h2 });
     }
+  }
+
+  return resp;
+}
+
+// CDN fetch with Referer header (for m3u8/segment — many CDNs require Referer)
+async function cdnFetch(cdnUrl) {
+  const headers = new Headers();
+  headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+
+  // Set Referer to CDN origin — many video CDNs enforce hotlinking protection
+  try {
+    const cdnOrigin = new URL(cdnUrl).origin;
+    headers.set('Referer', cdnOrigin + '/');
+  } catch (_) { /* ignore malformed URL */ }
+
+  // Also try a secondary Referer: the moontv upstream (some CDNs whitelist the embedding site)
+  // We send the CDN origin as primary; if 403, retry with moontv origin
+  let resp = await fetch(cdnUrl, { headers, redirect: 'follow' });
+
+  // Retry with different Referer if first attempt fails with 403/502
+  if (!resp.ok && (resp.status === 403 || resp.status === 502 || resp.status === 404)) {
+    console.log('[cdnFetch] First attempt failed (' + resp.status + '), retrying with moontv Referer...');
+    try { await resp.body?.cancel(); } catch (_) { /* consume */ }
+    const h2 = new Headers(headers);
+    h2.set('Referer', UPSTREAM + '/');
+    resp = await fetch(cdnUrl, { headers: h2, redirect: 'follow' });
   }
 
   return resp;
@@ -177,7 +204,7 @@ export async function onRequest(context) {
         });
       }
 
-      const resp = await proxyFetch(tgt);
+      const resp = await cdnFetch(tgt);
       if (!resp.ok) {
         return new Response(null, { status: 502, headers: corsHeaders() });
       }
@@ -226,7 +253,7 @@ export async function onRequest(context) {
         return new Response(null, { status: 400, headers: corsHeaders() });
       }
 
-      const resp = await proxyFetch(tgt);
+      const resp = await cdnFetch(tgt);
       if (!resp.ok) {
         return new Response(null, { status: 502, headers: corsHeaders() });
       }
