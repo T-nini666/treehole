@@ -3926,7 +3926,8 @@ const PROXY = window.location.origin;
 const LOCAL_FALLBACKS = (() => {
   try { const v = localStorage.getItem('__local_proxy_ips'); if (v) return JSON.parse(v); } catch(_) {}
   // HTTPS first for Cloudflare pages (avoids Mixed Content), HTTP as fallback
-  return ['https://10.212.3.172:8766', 'http://10.212.3.172:8765'];
+  // Include localhost for same-machine access, IP for phone/WiFi access
+  return ['https://localhost:8766', 'https://10.212.3.172:8766', 'http://localhost:8765', 'http://10.212.3.172:8765'];
 })();
 // Auto-select scheme matching current page to avoid Mixed Content blocking
 const LOCAL_PROXY = (() => {
@@ -4322,7 +4323,7 @@ function openPlayer(item) {
   if (playUrl) {
     console.log('[Player] Using play URL from search result:', playUrl);
     if (playUrl.endsWith('.m3u8')) {
-      loadHls(`${PROXY}/api/m3u8?url=${encodeURIComponent(playUrl)}`);
+      loadHls(buildM3u8Url(playUrl));
     } else {
       loadVideo(playUrl);
     }
@@ -4355,7 +4356,7 @@ function openPlayer(item) {
       if (!url) throw new Error('未在返回数据中找到播放地址');
       console.log('[Player] Play URL from detail:', url);
       if (url.endsWith('.m3u8')) {
-        loadHls(`${PROXY}/api/m3u8?url=${encodeURIComponent(url)}`);
+        loadHls(buildM3u8Url(url));
       } else {
         loadVideo(url);
       }
@@ -4398,7 +4399,7 @@ function playEpisode(index) {
   playerLastAction = {type: 'episode', index: index, name: ep.name};
   
   if (epUrl.endsWith('.m3u8')) {
-    loadHls(`${PROXY}/api/m3u8?url=${encodeURIComponent(epUrl)}`);
+    loadHls(buildM3u8Url(epUrl));
   } else if (epUrl.startsWith('http')) {
     // Try as direct video first; if it might be an M3U8, also prepare fallback
     loadVideo(epUrl);
@@ -4407,7 +4408,7 @@ function playEpisode(index) {
     let tried = false;
     const fallbacks = [
       'https://' + epUrl.replace(/^\/+/, ''),
-      PROXY + '/api/m3u8?url=' + encodeURIComponent(epUrl.startsWith('http') ? epUrl : 'https://' + epUrl.replace(/^\/+/, ''))
+      buildM3u8Url(epUrl.startsWith('http') ? epUrl : 'https://' + epUrl.replace(/^\/+/, ''))
     ];
     for (const fb of fallbacks) {
       if (fb && fb.length > 10) {
@@ -4478,7 +4479,7 @@ function loadHls(url) {
   
   // ====== Retry counter for network errors ======
   let networkRetries = 0;
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = 1;
   
   if (Hls && Hls.isSupported()) {
     hlsInstance = new Hls({
@@ -4518,8 +4519,8 @@ function loadHls(url) {
       stallDetectRetry: 4,
       stallDetectInfinite: false,
       // ==== Network ====
-      manifestLoadingMaxRetry: 5,
-      levelLoadingMaxRetry: 5
+      manifestLoadingMaxRetry: 2,
+      levelLoadingMaxRetry: 2
     });
     hlsInstance.loadSource(url);
     hlsInstance.attachMedia(video);
@@ -4643,6 +4644,13 @@ function tryLocalFallback(currentUrl) {
     if (!cdn) return null;
     return LOCAL_PROXY + '/api/m3u8?url=' + encodeURIComponent(cdn);
   } catch(e) { return null; }
+}
+
+// Build M3U8 proxy URL: prefer local proxy (can reach Chinese CDNs), fallback to CF Worker
+function buildM3u8Url(cdnUrl) {
+  const cfUrl = `${PROXY}/api/m3u8?url=${encodeURIComponent(cdnUrl)}`;
+  const localUrl = tryLocalFallback(cfUrl);
+  return localUrl || cfUrl;
 }
 
 // Extract play URL from search result item (try multiple possible field names)
