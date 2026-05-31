@@ -3965,7 +3965,8 @@ async function tryRedirectToLocalProxy() {
         if (d.status === 'ok') {
           console.log('[Redirect] Local proxy found at', fb, '→ redirecting');
           sessionStorage.setItem('__lp_redirected', '1');
-          window.location.href = fb + window.location.pathname + window.location.search;
+          // Always redirect to root – local proxy serves treehole.html at /
+          window.location.href = fb + '/';
           return;
         }
       }
