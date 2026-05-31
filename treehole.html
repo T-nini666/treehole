@@ -3925,7 +3925,14 @@ const PROXY = window.location.origin;
 // Auto-fallback to local proxy for M3U8/segment when on Cloudflare domain
 const LOCAL_FALLBACKS = (() => {
   try { const v = localStorage.getItem('__local_proxy_ips'); if (v) return JSON.parse(v); } catch(_) {}
-  return ['http://10.212.3.172:8765']; // default: PC's LAN IP
+  // HTTPS first for Cloudflare pages (avoids Mixed Content), HTTP as fallback
+  return ['https://10.212.3.172:8766', 'http://10.212.3.172:8765'];
+})();
+// Auto-select scheme matching current page to avoid Mixed Content blocking
+const LOCAL_PROXY = (() => {
+  const needHttps = window.location.origin.startsWith('https://');
+  const fb = LOCAL_FALLBACKS.find(f => needHttps ? f.startsWith('https://') : f.startsWith('http://'));
+  return fb || LOCAL_FALLBACKS[0];
 })();
 let proxyReady = false;
 let searchMediaType = 'video'; // 'video' | 'novel'
@@ -3936,36 +3943,6 @@ let _proxyTimer = null;
 let _proxyRetryCount = 0;
 const _PROXY_RETRY_FAST = 6;
 let _proxyFirstConnectDone = false;
-
-// —— Auto-redirect from Cloudflare HTTPS to local HTTP proxy ——
-// Cloudflare Worker's IP is blocked by Chinese CDNs (M3U8/segment proxying fails).
-// Local proxy (on PC) has a Chinese IP and CAN proxy CDN content.
-// Mixed Content blocks HTTP sub-requests from HTTPS, but NOT top-level navigation.
-// So we redirect the ENTIRE page from HTTPS→HTTP (no fetch needed).
-let _localProxyChecked = false;
-function tryRedirectToLocalProxy() {
-  if (_localProxyChecked) return;
-  _localProxyChecked = true;
-  
-  const origin = window.location.origin;
-  // Only redirect from Cloudflare HTTPS → local HTTP proxy
-  if (!origin.startsWith('https://')) return;
-  if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('10.') || origin.includes('192.168.')) return;
-  
-  // Respect user opt-out & avoid redirect loops
-  if (window.location.search.includes('noredirect')) return;
-  if (sessionStorage.getItem('__lp_redirected')) return;
-  sessionStorage.setItem('__lp_redirected', '1');
-  
-  const target = LOCAL_FALLBACKS[0] + '/';
-  console.log('[Redirect] Cloudflare HTTPS → local HTTP proxy:', target);
-  
-  // Show brief redirect notice, then navigate (top-level nav from HTTPS→HTTP IS allowed)
-  document.documentElement.innerHTML = '<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#0a1628;font-family:sans-serif;color:#b8d4e3;text-align:center;flex-direction:column;gap:16px;}a{color:#5cc0a0;font-size:14px;}</style></head><body><div style="font-size:20px;">🔗 正在连接局域网代理服务器…</div><div style="font-size:13px;color:#6a8a9a;">如长时间未跳转，请确保电脑端代理已启动</div><a href="'+esc(target)+'">手动连接</a></body>';
-  setTimeout(function(){ window.location.href = target; }, 800);
-}
-
-tryRedirectToLocalProxy();
 
 init();
 console.log('%c🌳 树洞 · 电子手帐观影管理系统 %c已就绪','color:var(--accent);font-size:16px;','color:var(--text-muted);');
@@ -4590,27 +4567,18 @@ function loadHls(url) {
               hlsInstance.startLoad();
               } else {
               console.error('[HLS] Network retries exhausted');
-              // Try local proxy fallback (Cloudflare Worker blocked by Chinese CDNs)
+              // Try local proxy fallback (Worker can't reach Chinese CDNs)
               const fb = tryLocalFallback(url);
-              if (fb && fb !== url && !window.location.origin.startsWith('https://')) {
-                // Only fallback if we're already on HTTP (not blocked by mixed content)
+              if (fb && fb !== url) {
                 console.log('[HLS] Switching to local proxy:', fb);
                 destroyHls();
                 cancelTimeout();
                 loadHls(fb);
                 return;
               }
-              // If on HTTPS (Cloudflare), fallback URL would be blocked by Mixed Content.
-              // Show a clear message directing user to local proxy.
-              if (fb && window.location.origin.startsWith('https://')) {
-                destroyHls();
-                cancelTimeout();
-                showPlayerError(`视频加载失败：外网 (Cloudflare) 无法直连视频源。<br>请 <a href="${LOCAL_FALLBACKS[0]}/" style="color:var(--accent2);text-decoration:underline;">点击切换局域网代理</a> 后观看`);
-                return;
-              }
               destroyHls();
               cancelTimeout();
-              showPlayerError('加载视频源失败，请重新搜索或稍后再试');
+              showPlayerError('加载视频源失败，请确保电脑端代理已启动并安装HTTPS证书');
             }
             break;
           case Hls.ErrorTypes.MEDIA_ERROR:
@@ -4673,7 +4641,7 @@ function tryLocalFallback(currentUrl) {
     }
     const cdn = u.searchParams.get('url');
     if (!cdn) return null;
-    return LOCAL_FALLBACKS[0] + '/api/m3u8?url=' + encodeURIComponent(cdn);
+    return LOCAL_PROXY + '/api/m3u8?url=' + encodeURIComponent(cdn);
   } catch(e) { return null; }
 }
 

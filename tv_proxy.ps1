@@ -9,6 +9,7 @@ Add-Type -AssemblyName System.Web
 
 # ====== CONFIG ======
 $PORT = 8765
+$HTTPS_PORT = 8766
 $TV_URL = "https://moontv.022340618.xyz"
 $SCRIPT_DIR = Split-Path $PSCommandPath -Parent
 $HTML_FILE = Join-Path $SCRIPT_DIR "treehole.html"
@@ -233,21 +234,156 @@ function Add-Cors($resp) {
     $resp.Headers.Add("Access-Control-Max-Age", "86400")
 }
 
+# ====== HTTPS Certificate Setup ======
+function Get-LocalIP {
+    try {
+        $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { 
+            $_.InterfaceAlias -notmatch "Loopback" -and $_.SuffixOrigin -ne "WellKnown" -and $_.IPAddress -notlike "169.254.*"
+        } | Select-Object -First 1).IPAddress
+        if ($ip) { return $ip }
+    } catch {}
+    # Fallback: use hostname resolution
+    try { return ([System.Net.Dns]::GetHostEntry([System.Net.Dns]::GetHostName()).AddressList | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1).IPAddressToString } catch {}
+    return "10.212.3.172"  # hardcoded fallback
+}
+$LOCAL_IP = Get-LocalIP
+Write-Host "[NET] Local IP: $LOCAL_IP"
+
+function Setup-HttpsCert {
+    $certDns = @($LOCAL_IP, "localhost", "127.0.0.1", $env:COMPUTERNAME)
+    Write-Host "[CERT] Looking for cert with DNS: $($certDns -join ', ')"
+    
+    # Check if cert already exists in LocalMachine store
+    $existing = Get-ChildItem -Path "Cert:\LocalMachine\My" -ErrorAction SilentlyContinue | Where-Object {
+        $_.DnsNameList -contains $LOCAL_IP -and $_.NotAfter -gt (Get-Date)
+    } | Sort-Object NotAfter -Descending | Select-Object -First 1
+    
+    if ($existing) {
+        Write-Host "[CERT] Existing valid cert found: thumbprint=$($existing.Thumbprint)"
+        return $existing
+    }
+    
+    # Generate new self-signed certificate
+    try {
+        $cert = New-SelfSignedCertificate -DnsName $certDns `
+            -CertStoreLocation "Cert:\LocalMachine\My" `
+            -NotAfter (Get-Date).AddYears(5) `
+            -KeyLength 2048 `
+            -TextExtension @("2.5.29.17={text}DNS=$($certDns -join '&DNS=')", "2.5.29.19={text}CA:false") `
+            -ErrorAction Stop
+        Write-Host "[CERT] Generated new cert: thumbprint=$($cert.Thumbprint)"
+        return $cert
+    } catch {
+        Write-Host "[CERT] ERROR generating cert: $_"
+        # Try simpler generation without extensions
+        try {
+            $cert = New-SelfSignedCertificate -DnsName $certDns `
+                -CertStoreLocation "Cert:\LocalMachine\My" `
+                -NotAfter (Get-Date).AddYears(5)
+            Write-Host "[CERT] Generated (simple): thumbprint=$($cert.Thumbprint)"
+            return $cert
+        } catch {
+            Write-Host "[CERT] FAILED to generate certificate: $_"
+            return $null
+        }
+    }
+}
+
+function Bind-HttpsPort($thumbprint) {
+    # Check if already bound
+    $check = netsh http show sslcert ipport=0.0.0.0:$HTTPS_PORT 2>&1 | Out-String
+    if ($check -match "IP:port.*0\.0\.0\.0:$HTTPS_PORT" -and $check -match "Certificate Hash") {
+        Write-Host "[CERT] Port $HTTPS_PORT already has SSL binding"
+        return $true
+    }
+    
+    # Bind certificate to port
+    try {
+        $appId = "{214124cd-d05b-4309-9dd4-9be8c68cdb3d}"
+        $result = netsh http add sslcert ipport=0.0.0.0:$HTTPS_PORT certhash=$thumbprint appid=$appId 2>&1
+        Write-Host "[CERT] SSL bind result: $result"
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        Write-Host "[CERT] SSL bind ERROR: $_"
+        Write-Host "[CERT] Run as Administrator and execute:"
+        Write-Host "  netsh http add sslcert ipport=0.0.0.0:$HTTPS_PORT certhash=$thumbprint appid={214124cd-d05b-4309-9dd4-9be8c68cdb3d}"
+        return $false
+    }
+}
+
 # ====== Server ======
 $listener = New-Object System.Net.HttpListener
+
+# Always add HTTP prefix first (most reliable)
 $listener.Prefixes.Add("http://+:$PORT/")
 
+# Attempt HTTPS setup on separate port 8766 (Admin required for cert binding)
+$httpsEnabled = $false
+try {
+    $sslCert = Setup-HttpsCert
+    if ($sslCert) {
+        # Clean up stale HTTPS URL reservation
+        try { $null = & netsh http delete urlacl url=https://+:$HTTPS_PORT/ 2>$null } catch {}
+        
+        if (Bind-HttpsPort $sslCert.Thumbprint) {
+            try {
+                $listener.Prefixes.Add("https://+:$HTTPS_PORT/")
+                $httpsEnabled = $true
+            } catch {
+                Write-Host "[WARN] HTTPS prefix add failed: $_"
+                Write-Host "[WARN] HTTP only. To fix: netsh http delete urlacl url=https://+:$HTTPS_PORT/"
+            }
+            
+            # Export certificate for phone
+            $certFile = Join-Path $SCRIPT_DIR "proxy-cert.cer"
+            try {
+                Export-Certificate -Cert $sslCert -FilePath $certFile -Type CERT -Force -ErrorAction Stop
+                Write-Host "[CERT] Phone cert exported to: $certFile"
+                Write-Host "[CERT] Transfer this file to your phone and install it"
+            } catch {
+                Write-Host "[CERT] WARN: Could not export cert file: $_"
+            }
+        }
+    }
+} catch {
+    Write-Host "[WARN] HTTPS setup failed: $_"
+}
+
 Write-Host "============================================"
-Write-Host "  TV Proxy  :$PORT | $USERNAME"
+Write-Host "  TV Proxy  HTTP :$PORT | HTTPS :$HTTPS_PORT"
+Write-Host "  User: $USERNAME"
 Write-Host "============================================"
 
 Login-TV
 
-try {
-    $listener.Start()
-    Write-Host "[READY] http://localhost:$PORT"
-    Write-Host "[INFO] Ctrl+C to stop`n"
+# Try to start, handling any stale URL registrations
+$startOk = $false
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    try {
+        $listener.Start()
+        $startOk = $true
+        break
+    } catch {
+        Write-Host "[RETRY $attempt/3] Start failed: $($_.Exception.Message)"
+        try { $listener.Close() } catch {}
+        # Clean up stale URL registrations
+        $null = & netsh http delete urlacl url=https://+:$HTTPS_PORT/ 2>$null
+        $null = & netsh http delete urlacl url=http://+:$PORT/ 2>$null
+        $listener = New-Object System.Net.HttpListener
+        try { $listener.Prefixes.Add("http://+:$PORT/") } catch {}
+        if ($httpsEnabled) { try { $listener.Prefixes.Add("https://+:$HTTPS_PORT/") } catch { $httpsEnabled = $false } }
+        Start-Sleep 2
+    }
+}
+if (-not $startOk) {
+    Write-Host "[FATAL] Cannot start listener on port $PORT"
+    exit 1
+}
+Write-Host "[READY] http://localhost:$PORT"
+if ($httpsEnabled) { Write-Host "[READY] https://localhost:$HTTPS_PORT" }
+Write-Host "[INFO] Ctrl+C to stop`n"
 
+try {
     while ($listener.IsListening) {
         $ctx = $listener.GetContext()
         $req = $ctx.Request
@@ -350,10 +486,12 @@ try {
                     # Use the actual request Host header (includes port for non-standard ports)
                     # CRITICAL: Don't hardcode localhost – phone clients see localhost as themselves
                     $reqHost = $req.Headers["Host"]
-                    if (-not $reqHost) { $reqHost = "$($req.Url.Host):$PORT" }
+                    if (-not $reqHost) { $reqHost = "$($req.Url.Host):$($req.Url.Port)" }
                     
                     $lines = $m3u8Text -split "`n"
                     $rewritten = @()
+                    # Use the scheme of the incoming request (http/https)
+                    $reqScheme = $req.Url.Scheme
                     foreach ($line in $lines) {
                         $trimmed = $line.Trim()
                         if ($trimmed -match '^#') {
@@ -362,9 +500,9 @@ try {
                             $segUrl = if ($trimmed -match '^https?://') { $trimmed } else { $baseUrl + $trimmed }
                             $encoded = [System.Web.HttpUtility]::UrlEncode($segUrl)
                             if ($isMaster) {
-                                $rewritten += "http://${reqHost}/api/m3u8?url=$encoded"
+                                $rewritten += "${reqScheme}://${reqHost}/api/m3u8?url=$encoded"
                             } else {
-                                $rewritten += "http://${reqHost}/api/segment?url=$encoded"
+                                $rewritten += "${reqScheme}://${reqHost}/api/segment?url=$encoded"
                             }
                         } else {
                             $rewritten += $line
