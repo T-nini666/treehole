@@ -3921,6 +3921,12 @@ function init(){
 }
 // ==================== MEDIA SEARCH & PLAYER ====================
 const PROXY = window.location.origin;
+// Cloudflare Worker can't proxy Chinese CDN content (IP blocked by CDN)
+// Auto-fallback to local proxy for M3U8/segment when on Cloudflare domain
+const LOCAL_FALLBACKS = (() => {
+  try { const v = localStorage.getItem('__local_proxy_ips'); if (v) return JSON.parse(v); } catch(_) {}
+  return ['http://10.212.3.172:8765']; // default: PC's LAN IP
+})();
 let proxyReady = false;
 let searchMediaType = 'video'; // 'video' | 'novel'
 let lastSearchType = '全部';
@@ -4554,6 +4560,15 @@ function loadHls(url) {
               hlsInstance.startLoad();
             } else {
               console.error('[HLS] Network retries exhausted');
+              // Try local proxy fallback (Cloudflare Worker blocked by Chinese CDNs)
+              const fb = tryLocalFallback(url);
+              if (fb && fb !== url) {
+                console.log('[HLS] Switching to local proxy:', fb);
+                destroyHls();
+                cancelTimeout();
+                loadHls(fb);
+                return;
+              }
               destroyHls();
               cancelTimeout();
               showPlayerError('加载视频源失败，请重新搜索或稍后再试');
@@ -4604,6 +4619,23 @@ function destroyHls() {
     hlsInstance.destroy();
     hlsInstance = null;
   }
+}
+
+// Try to build a local proxy fallback URL when Cloudflare Worker can't proxy CDN
+function tryLocalFallback(currentUrl) {
+  if (!LOCAL_FALLBACKS || LOCAL_FALLBACKS.length === 0) return null;
+  try {
+    const u = new URL(currentUrl);
+    // Only rewrite URLs that go through /api/m3u8
+    if (!u.pathname.includes('/api/m3u8')) return null;
+    // Don't fallback if already on a local proxy
+    for (const fb of LOCAL_FALLBACKS) {
+      if (currentUrl.startsWith(fb)) return null; // already using local
+    }
+    const cdn = u.searchParams.get('url');
+    if (!cdn) return null;
+    return LOCAL_FALLBACKS[0] + '/api/m3u8?url=' + encodeURIComponent(cdn);
+  } catch(e) { return null; }
 }
 
 // Extract play URL from search result item (try multiple possible field names)
