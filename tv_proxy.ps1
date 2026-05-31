@@ -347,6 +347,11 @@ try {
                     $baseUrl = $tgt -replace '/[^/]+$','/'
                     $isMaster = $m3u8Text -match '#EXT-X-STREAM-INF'
                     
+                    # Use the actual request Host header (includes port for non-standard ports)
+                    # CRITICAL: Don't hardcode localhost – phone clients see localhost as themselves
+                    $reqHost = $req.Headers["Host"]
+                    if (-not $reqHost) { $reqHost = "$($req.Url.Host):$PORT" }
+                    
                     $lines = $m3u8Text -split "`n"
                     $rewritten = @()
                     foreach ($line in $lines) {
@@ -357,9 +362,9 @@ try {
                             $segUrl = if ($trimmed -match '^https?://') { $trimmed } else { $baseUrl + $trimmed }
                             $encoded = [System.Web.HttpUtility]::UrlEncode($segUrl)
                             if ($isMaster) {
-                                $rewritten += "http://localhost:$PORT/api/m3u8?url=$encoded"
+                                $rewritten += "http://${reqHost}/api/m3u8?url=$encoded"
                             } else {
-                                $rewritten += "http://localhost:$PORT/api/segment?url=$encoded"
+                                $rewritten += "http://${reqHost}/api/segment?url=$encoded"
                             }
                         } else {
                             $rewritten += $line

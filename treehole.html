@@ -3937,6 +3937,45 @@ let _proxyRetryCount = 0;
 const _PROXY_RETRY_FAST = 6;
 let _proxyFirstConnectDone = false;
 
+// —— Auto-redirect from Cloudflare HTTPS to local HTTP proxy if available ——
+// Cloudflare Worker's IP is blocked by Chinese CDNs, so M3U8/segment proxying fails.
+// Local proxy (on PC) has a Chinese IP and can proxy CDN content correctly.
+// However, HTTPS→HTTP is blocked by browsers (mixed content), so we redirect the entire page.
+let _localProxyChecked = false;
+async function tryRedirectToLocalProxy() {
+  if (_localProxyChecked) return;
+  _localProxyChecked = true;
+  
+  // Only redirect if we're on Cloudflare (HTTPS origin, non-local)
+  const origin = window.location.origin;
+  if (!origin.startsWith('https://')) return;
+  if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('10.') || origin.includes('192.168.')) return;
+  
+  // Don't redirect if user explicitly opted out
+  if (window.location.search.includes('noredirect')) return;
+  // Don't redirect repeatedly within same session
+  if (sessionStorage.getItem('__lp_redirected')) return;
+  
+  console.log('[Redirect] Checking local proxy availability...');
+  for (const fb of LOCAL_FALLBACKS) {
+    try {
+      const r = await fetch(`${fb}/api/ping`, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) {
+        const d = await r.json();
+        if (d.status === 'ok') {
+          console.log('[Redirect] Local proxy found at', fb, '→ redirecting');
+          sessionStorage.setItem('__lp_redirected', '1');
+          window.location.href = fb + window.location.pathname + window.location.search;
+          return;
+        }
+      }
+    } catch(e) { /* not reachable, try next */ }
+  }
+  console.log('[Redirect] No local proxy available, staying on Cloudflare');
+}
+
+tryRedirectToLocalProxy();
+
 init();
 console.log('%c🌳 树洞 · 电子手帐观影管理系统 %c已就绪','color:var(--accent);font-size:16px;','color:var(--text-muted);');
 
