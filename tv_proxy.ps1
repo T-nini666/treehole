@@ -290,9 +290,10 @@ function Setup-HttpsCert {
 }
 
 function Bind-HttpsPort($thumbprint) {
-    # Check if already bound
+    # Check if already bound (use multiple detection methods)
     $check = netsh http show sslcert ipport=0.0.0.0:$HTTPS_PORT 2>&1 | Out-String
-    if ($check -match "IP:port.*0\.0\.0\.0:$HTTPS_PORT" -and $check -match "Certificate Hash") {
+    if (($check -match "IP:port.*0\.0\.0\.0:$HTTPS_PORT" -and $check -match "Certificate Hash") -or
+        ($check -match ":$HTTPS_PORT" -and $check -match $thumbprint)) {
         Write-Host "[CERT] Port $HTTPS_PORT already has SSL binding"
         return $true
     }
@@ -301,7 +302,13 @@ function Bind-HttpsPort($thumbprint) {
     try {
         $appId = "{214124cd-d05b-4309-9dd4-9be8c68cdb3d}"
         $result = netsh http add sslcert ipport=0.0.0.0:$HTTPS_PORT certhash=$thumbprint appid=$appId 2>&1
-        Write-Host "[CERT] SSL bind result: $result"
+        $resultStr = "$result"
+        Write-Host "[CERT] SSL bind result: $resultStr"
+        # Error 183 = already exists (also treat as success)
+        if ($resultStr -match "183|already exists|已存在|当文件已存在") {
+            Write-Host "[CERT] Binding already exists (error 183), treating as OK"
+            return $true
+        }
         return ($LASTEXITCODE -eq 0)
     } catch {
         Write-Host "[CERT] SSL bind ERROR: $_"
@@ -322,16 +329,30 @@ $httpsEnabled = $false
 try {
     $sslCert = Setup-HttpsCert
     if ($sslCert) {
-        # Clean up stale HTTPS URL reservation
-        try { $null = & netsh http delete urlacl url=https://+:$HTTPS_PORT/ 2>$null } catch {}
-        
         if (Bind-HttpsPort $sslCert.Thumbprint) {
+            # Ensure URL ACL exists before adding prefix (fix: was being deleted before)
+            $aclExists = netsh http show urlacl url="https://+:$HTTPS_PORT/" 2>&1 | Out-String
+            if ($aclExists -notmatch "Listen\s*:\s*Yes") {
+                Write-Host "[CERT] Creating URL ACL for https://+:$HTTPS_PORT/ ..."
+                & netsh http add urlacl url="https://+:$HTTPS_PORT/" user="Everyone" listen="yes" 2>&1 | Out-Null
+            } else {
+                Write-Host "[CERT] URL ACL already exists for https://+:$HTTPS_PORT/"
+            }
             try {
                 $listener.Prefixes.Add("https://+:$HTTPS_PORT/")
                 $httpsEnabled = $true
+                Write-Host "[CERT] HTTPS enabled on port $HTTPS_PORT (wildcard +)"
             } catch {
-                Write-Host "[WARN] HTTPS prefix add failed: $_"
-                Write-Host "[WARN] HTTP only. To fix: netsh http delete urlacl url=https://+:$HTTPS_PORT/"
+                Write-Host "[WARN] HTTPS wildcard prefix failed: $($_.Exception.Message)"
+                # Fallback: try localhost-specific prefix (no admin required on some systems)
+                try {
+                    $listener.Prefixes.Add("https://localhost:$HTTPS_PORT/")
+                    $httpsEnabled = $true
+                    Write-Host "[CERT] HTTPS enabled on port $HTTPS_PORT (localhost)"
+                } catch {
+                    Write-Host "[WARN] HTTPS localhost prefix also failed: $($_.Exception.Message)"
+                    Write-Host "[WARN] HTTPS unavailable - run as Admin to enable"
+                }
             }
             
             # Export certificate for phone
@@ -366,12 +387,16 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
     } catch {
         Write-Host "[RETRY $attempt/3] Start failed: $($_.Exception.Message)"
         try { $listener.Close() } catch {}
-        # Clean up stale URL registrations
-        $null = & netsh http delete urlacl url=https://+:$HTTPS_PORT/ 2>$null
+        # Clean up stale HTTP registration only
         $null = & netsh http delete urlacl url=http://+:$PORT/ 2>$null
+        
+        if ($httpsEnabled) {
+            Write-Host "[RETRY] HTTPS binding broken, falling back to HTTP-only..."
+            $httpsEnabled = $false
+        }
+        
         $listener = New-Object System.Net.HttpListener
         try { $listener.Prefixes.Add("http://+:$PORT/") } catch {}
-        if ($httpsEnabled) { try { $listener.Prefixes.Add("https://+:$HTTPS_PORT/") } catch { $httpsEnabled = $false } }
         Start-Sleep 2
     }
 }
@@ -385,7 +410,13 @@ Write-Host "[INFO] Ctrl+C to stop`n"
 
 try {
     while ($listener.IsListening) {
-        $ctx = $listener.GetContext()
+        try {
+            $ctx = $listener.GetContext()
+        } catch {
+            Write-Host "[WARN] GetContext error: $($_.Exception.Message) - continuing..."
+            Start-Sleep -Milliseconds 500
+            continue
+        }
         $req = $ctx.Request
         $resp = $ctx.Response
         Add-Cors $resp
@@ -605,6 +636,46 @@ try {
                 $resp.ContentType = "application/json; charset=utf-8"
                 $resp.ContentLength64 = $bytes.Length
                 $resp.OutputStream.Write($bytes, 0, $bytes.Length)
+                $resp.OutputStream.Close(); $resp.Close(); continue
+            }
+
+            # Forward auth & user data APIs to Cloudflare Worker (cloud sync)
+            if ($path -like "/api/auth/*" -or $path -like "/api/user/*") {
+                $cfUrl = "https://treehole.022340618.xyz" + $req.Url.PathAndQuery
+                $cfBody = $null
+                if ($req.HttpMethod -eq "POST" -or $req.HttpMethod -eq "PUT") {
+                    $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+                    $cfBody = $reader.ReadToEnd()
+                    $reader.Close()
+                }
+                try {
+                    $wc = New-Object System.Net.WebClient
+                    $wc.Encoding = [System.Text.Encoding]::UTF8
+                    if ($req.Headers["Authorization"]) { $wc.Headers.Add("Authorization", $req.Headers["Authorization"]) }
+                    if ($req.Headers["Content-Type"]) { $wc.Headers.Add("Content-Type", $req.Headers["Content-Type"]) }
+                    
+                    if ($req.HttpMethod -eq "GET") {
+                        $cfResult = $wc.DownloadString($cfUrl)
+                    } elseif ($req.HttpMethod -eq "POST") {
+                        $cfResult = $wc.UploadString($cfUrl, "POST", $cfBody)
+                    } elseif ($req.HttpMethod -eq "PUT") {
+                        $cfResult = $wc.UploadString($cfUrl, "PUT", $cfBody)
+                    }
+                    
+                    $cfData = [Text.Encoding]::UTF8.GetBytes($cfResult)
+                    $resp.ContentType = "application/json; charset=utf-8"
+                    $resp.ContentLength64 = $cfData.Length
+                    $resp.OutputStream.Write($cfData, 0, $cfData.Length)
+                    try { $wc.Dispose() } catch {}
+                } catch {
+                    Write-Host "[AUTH FWD ERR] $cfUrl : $($_.Exception.Message)"
+                    $errJson = '{"error":"Cloud sync unavailable – try again later"}'
+                    $errBytes = [Text.Encoding]::UTF8.GetBytes($errJson)
+                    $resp.StatusCode = 502
+                    $resp.ContentType = "application/json; charset=utf-8"
+                    $resp.ContentLength64 = $errBytes.Length
+                    $resp.OutputStream.Write($errBytes, 0, $errBytes.Length)
+                }
                 $resp.OutputStream.Close(); $resp.Close(); continue
             }
 

@@ -1188,6 +1188,35 @@ body{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;min-h
   .player-overlay{align-items:stretch;}
   .player-modal{border-radius:0;}
 }
+
+/* ===== LOGIN OVERLAY ===== */
+.login-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);transition:opacity 0.45s ease,visibility 0.45s ease;}
+.login-overlay:not(.show){opacity:0;visibility:hidden;pointer-events:none;}
+.login-card{width:380px;max-width:92vw;padding:2.8rem 2rem;border-radius:20px;background:var(--bg-card);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--border);box-shadow:0 24px 72px rgba(0,0,0,0.25);animation:loginIn 0.5s cubic-bezier(0.22,1,0.36,1);}
+@keyframes loginIn{from{opacity:0;transform:translateY(30px) scale(0.95);}to{opacity:1;transform:translateY(0) scale(1);}}
+.login-logo{font-size:2.4rem;text-align:center;margin-bottom:0.3rem;}
+.login-sub{text-align:center;font-size:0.85rem;color:var(--text-muted);margin-bottom:1.8rem;}
+.login-tabs{display:flex;border-bottom:2px solid var(--border);margin-bottom:1.6rem;gap:0;}
+.login-tab{flex:1;padding:0.7rem 0;border:none;background:none;cursor:pointer;font-size:0.95rem;color:var(--text-muted);font-family:inherit;transition:all 0.3s ease;position:relative;}
+.login-tab.active{color:var(--accent);font-weight:600;}
+.login-tab.active::after{content:'';position:absolute;bottom:-2px;left:20%;right:20%;height:2px;background:var(--accent);border-radius:1px;}
+.login-form{display:flex;flex-direction:column;gap:0.9rem;}
+.login-form input{padding:0.7rem 1rem;border-radius:10px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:0.95rem;font-family:inherit;outline:none;transition:border-color 0.3s ease,box-shadow 0.3s ease;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+.login-form input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--shadow);}
+.login-btn{padding:0.75rem;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:1rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all 0.3s cubic-bezier(0.22,1,0.36,1);letter-spacing:0.5px;}
+.login-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px var(--glow);}
+.login-btn:active{transform:translateY(0);}
+.login-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none;}
+.login-hint{text-align:center;font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem;}
+.login-error{color:#d06060;text-align:center;font-size:0.85rem;min-height:1.2em;margin-top:0.3rem;}
+.login-status{color:var(--accent2);text-align:center;font-size:0.85rem;min-height:1.2em;margin-top:0.3rem;}
+/* User menu in sidebar */
+.user-menu{margin-top:auto;padding:12px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.user-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;flex-shrink:0;}
+.user-name{font-size:0.82rem;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.user-logout{padding:4px 10px;border-radius:12px;border:1px solid var(--border);background:var(--input-bg);color:var(--text-muted);font-size:0.7rem;cursor:pointer;font-family:inherit;transition:all 0.2s ease;margin-left:auto;flex-shrink:0;}
+.user-logout:hover{background:var(--danger);color:#fff;border-color:var(--danger);}
+.login-sync{font-size:0.7rem;color:var(--text-muted);text-align:center;margin-top:0.2rem;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
@@ -1195,6 +1224,33 @@ body{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;min-h
 
 <!-- Background Canvas -->
 <canvas id="bgCanvas"></canvas>
+
+<!-- Login Overlay -->
+<div class="login-overlay show" id="loginOverlay">
+  <div class="login-card">
+    <div class="login-logo">🌳</div>
+    <div class="login-sub">登录后数据云端同步，换手机不丢失</div>
+    <div class="login-tabs">
+      <button class="login-tab active" data-tab="login" onclick="switchLoginTab('login')">登录</button>
+      <button class="login-tab" data-tab="register" onclick="switchLoginTab('register')">注册</button>
+    </div>
+    <form id="loginForm" class="login-form" onsubmit="handleLogin(event)">
+      <input type="text" id="loginUser" placeholder="用户名" autocomplete="username" required>
+      <input type="password" id="loginPass" placeholder="密码" autocomplete="current-password" required>
+      <button type="submit" class="login-btn" id="loginSubmitBtn">登 录</button>
+      <div class="login-hint">注册即同意数据存储在云端</div>
+    </form>
+    <form id="registerForm" class="login-form" style="display:none" onsubmit="handleRegister(event)">
+      <input type="text" id="regUser" placeholder="用户名 (2-30个字符)" autocomplete="username" minlength="2" maxlength="30" required>
+      <input type="password" id="regPass" placeholder="密码 (至少4位)" autocomplete="new-password" minlength="4" required>
+      <input type="password" id="regPass2" placeholder="确认密码" autocomplete="new-password" minlength="4" required>
+      <button type="submit" class="login-btn" id="regSubmitBtn">注 册</button>
+      <div class="login-hint">注册即登录，数据自动云端同步</div>
+    </form>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-status" id="loginStatus"></div>
+  </div>
+</div>
 
 <!-- Sidebar Toggle (mobile) -->
 <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="菜单">☰</button>
@@ -1229,6 +1285,11 @@ body{font-family:'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif;min-h
     <div class="theme-dot" data-theme="rain" onclick="switchTheme('rain')" title="雨境"></div>
     <div class="theme-dot" data-theme="autumn" onclick="switchTheme('autumn')" title="秋日"></div>
     <div class="theme-dot" data-theme="polar" onclick="switchTheme('polar')" title="极地"></div>
+  </div>
+  <div class="user-menu" id="userMenu" style="display:none">
+    <div class="user-avatar" id="userAvatar"></div>
+    <span class="user-name" id="userNameDisplay"></span>
+    <button class="user-logout" onclick="doLogout()" title="退出登录">退出</button>
   </div>
 </div>
 </aside>
@@ -2018,6 +2079,245 @@ let aiChatReviewId = null;
 let aiChatMovieId = null;
 let aiChatMessages = [];
 let aiChatLoading = false;
+
+// ==================== CLOUD AUTH & SYNC ====================
+const CLOUD_API = 'https://treehole.022340618.xyz';
+const AUTH_TOKEN_KEY = '_treehole_jwt';
+let _authToken = null;
+let _currentUser = null;
+let _syncDirty = false;
+let _syncBusy = false;
+let _syncTimer = null;
+const SYNC_KEYS = ['treehole_movies_v2','treehole-theme','treehole-paper-mode','treehole_api_config','treehole_reviews_chat_v1','treehole_ai_chat_standalone_v1','__local_proxy_ips'];
+
+// Intercept localStorage writes to auto-flag dirty
+const _origSetItem = localStorage.setItem.bind(localStorage);
+localStorage.setItem = function(key, value) {
+  _origSetItem(key, value);
+  if (!_syncBusy && _authToken && SYNC_KEYS.indexOf(key) >= 0) {
+    _syncDirty = true;
+  }
+};
+
+// Build cloud payload from localStorage
+function _buildCloudData() {
+  const ms = (() => { try { return JSON.parse(localStorage.getItem('treehole_movies_v2')) || []; } catch(e) { return []; } })();
+  const settings = {
+    theme: localStorage.getItem('treehole-theme') || 'ocean',
+    paperMode: localStorage.getItem('treehole-paper-mode') || 'solid',
+    apiConfig: (() => { try { return JSON.parse(localStorage.getItem('treehole_api_config') || '{}'); } catch(e) { return {}; } })(),
+    proxyIps: (() => { try { return JSON.parse(localStorage.getItem('__local_proxy_ips') || '[]'); } catch(e) { return []; } })(),
+  };
+  const chats = {
+    reviews: (() => { try { return JSON.parse(localStorage.getItem('treehole_reviews_chat_v1') || '{}'); } catch(e) { return {}; } })(),
+    standalone: (() => { try { return JSON.parse(localStorage.getItem('treehole_ai_chat_standalone_v1') || '[]'); } catch(e) { return []; } })(),
+  };
+  return { movies: ms, settings, chats };
+}
+
+// Write cloud data into localStorage (without triggering dirty flag)
+function _writeCloudData(data) {
+  _syncBusy = true;
+  try {
+    if (data.movies) _origSetItem('treehole_movies_v2', JSON.stringify(data.movies));
+    if (data.settings) {
+      if (data.settings.theme) _origSetItem('treehole-theme', data.settings.theme);
+      if (data.settings.paperMode) _origSetItem('treehole-paper-mode', data.settings.paperMode);
+      if (data.settings.apiConfig) _origSetItem('treehole_api_config', JSON.stringify(data.settings.apiConfig));
+      if (data.settings.proxyIps) _origSetItem('__local_proxy_ips', JSON.stringify(data.settings.proxyIps));
+    }
+    if (data.chats) {
+      if (data.chats.reviews) _origSetItem('treehole_reviews_chat_v1', JSON.stringify(data.chats.reviews));
+      if (data.chats.standalone) _origSetItem('treehole_ai_chat_standalone_v1', JSON.stringify(data.chats.standalone));
+    }
+  } finally {
+    _syncBusy = false;
+  }
+}
+
+// Push local data to cloud
+async function _cloudPush() {
+  if (!_authToken || !_syncDirty || _syncBusy) return;
+  _syncBusy = true;
+  try {
+    const data = _buildCloudData();
+    const resp = await fetch(`${CLOUD_API}/api/user/data`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_authToken}` },
+      body: JSON.stringify(data),
+    });
+    if (resp.ok) {
+      _syncDirty = false;
+      document.getElementById('loginStatus').textContent = '';
+    } else if (resp.status === 401) {
+      // Token expired — silent logout
+      _authToken = null; _currentUser = null;
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  } catch(e) {
+    console.warn('[Sync] Push failed, will retry:', e.message);
+  } finally {
+    _syncBusy = false;
+  }
+}
+
+// Pull cloud data into localStorage
+async function _cloudPull() {
+  if (!_authToken) return null;
+  try {
+    const resp = await fetch(`${CLOUD_API}/api/user/data`, {
+      headers: { 'Authorization': `Bearer ${_authToken}` },
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      _writeCloudData(data);
+      _syncDirty = false;
+      return data;
+    }
+  } catch(e) {
+    console.warn('[Sync] Pull failed:', e.message);
+  }
+  return null;
+}
+
+// Start periodic sync
+function _startSync() {
+  if (_syncTimer) clearInterval(_syncTimer);
+  _syncTimer = setInterval(() => _cloudPush(), 20000);
+  // Also push on page unload
+  window.addEventListener('beforeunload', () => _cloudPush());
+}
+
+function _stopSync() {
+  if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
+}
+
+// ==================== AUTH HANDLERS ====================
+function switchLoginTab(tab) {
+  document.querySelectorAll('.login-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('loginForm').style.display = tab === 'login' ? '' : 'none';
+  document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('loginStatus').textContent = '';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const btn = document.getElementById('loginSubmitBtn');
+  const errEl = document.getElementById('loginError');
+  const stEl = document.getElementById('loginStatus');
+  errEl.textContent = ''; stEl.textContent = '';
+  btn.disabled = true; btn.textContent = '登录中...';
+  try {
+    const username = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value;
+    const resp = await fetch(`${CLOUD_API}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) { errEl.textContent = result.error || '登录失败'; return; }
+    _authToken = result.token;
+    _currentUser = result.user;
+    localStorage.setItem(AUTH_TOKEN_KEY, _authToken);
+    _writeCloudData(result.data);
+    stEl.textContent = '登录成功，数据已同步 ✓';
+    setTimeout(() => finishLogin(), 600);
+  } catch(ex) {
+    errEl.textContent = '网络错误，请检查连接';
+  } finally {
+    btn.disabled = false; btn.textContent = '登 录';
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const btn = document.getElementById('regSubmitBtn');
+  const errEl = document.getElementById('loginError');
+  const stEl = document.getElementById('loginStatus');
+  errEl.textContent = ''; stEl.textContent = '';
+  const username = document.getElementById('regUser').value.trim();
+  const password = document.getElementById('regPass').value;
+  const password2 = document.getElementById('regPass2').value;
+  if (password !== password2) { errEl.textContent = '两次密码不一致'; return; }
+  if (username.length < 2) { errEl.textContent = '用户名至少2个字符'; return; }
+  if (password.length < 4) { errEl.textContent = '密码至少4位'; return; }
+  btn.disabled = true; btn.textContent = '注册中...';
+  try {
+    const resp = await fetch(`${CLOUD_API}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) { errEl.textContent = result.error || '注册失败'; return; }
+    _authToken = result.token;
+    _currentUser = result.user;
+    localStorage.setItem(AUTH_TOKEN_KEY, _authToken);
+    _writeCloudData(result.data);
+    stEl.textContent = '注册成功，数据已同步 ✓';
+    setTimeout(() => finishLogin(), 600);
+  } catch(ex) {
+    errEl.textContent = '网络错误，请检查连接';
+  } finally {
+    btn.disabled = false; btn.textContent = '注 册';
+  }
+}
+
+// Auto-validate stored JWT on page load
+async function _autoLogin() {
+  const savedToken = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (!savedToken) return false;
+  try {
+    const resp = await fetch(`${CLOUD_API}/api/auth/me`, {
+      headers: { 'Authorization': `Bearer ${savedToken}` },
+    });
+    if (!resp.ok) { localStorage.removeItem(AUTH_TOKEN_KEY); return false; }
+    const result = await resp.json();
+    if (!result.user) { localStorage.removeItem(AUTH_TOKEN_KEY); return false; }
+    _authToken = savedToken;
+    _currentUser = result.user;
+    // Only pull cloud data if local data is empty (avoid overwriting local changes)
+    const localData = _buildCloudData();
+    if (localData.movies.length === 0 && result.data && result.data.movies && result.data.movies.length > 0) {
+      _writeCloudData(result.data);
+    }
+    return true;
+  } catch(e) {
+    // Offline — use cached token
+    if (savedToken) {
+      _authToken = savedToken;
+      _currentUser = { username: '离线模式' };
+      return true;
+    }
+    return false;
+  }
+}
+
+function finishLogin() {
+  document.getElementById('loginOverlay').classList.remove('show');
+  document.getElementById('userMenu').style.display = 'flex';
+  document.getElementById('userNameDisplay').textContent = _currentUser?.username || '';
+  document.getElementById('userAvatar').textContent = (_currentUser?.username || '?').charAt(0).toUpperCase();
+  _startSync();
+  // Refresh theme and UI
+  loadTheme(); initBgCanvas(); renderHome(); renderSettings();
+}
+
+function doLogout() {
+  _stopSync();
+  _cloudPush().then(() => {
+    _authToken = null; _currentUser = null;
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    _syncDirty = false;
+    document.getElementById('userMenu').style.display = 'none';
+    document.getElementById('loginOverlay').classList.add('show');
+    document.getElementById('loginError').textContent = '';
+    document.getElementById('loginStatus').textContent = '已退出登录 (本地数据保留)';
+    showToast('已退出登录');
+  });
+}
 
 // ==================== UTILS ====================
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -3865,10 +4165,29 @@ function importAllData(e){
 function clearAllData(){localStorage.removeItem(MOVIES_KEY);showToast('数据已清除');renderHome();renderJournalList();renderShelf();renderBookshelf();renderChecklist();renderWatchlist();renderQuotations();}
 
 // ==================== INIT ====================
-function init(){
-  loadTheme();initBgCanvas();renderHome();renderSettings();
+async function init(){
+  // Show login overlay by default (auto-login will hide it if JWT is valid)
+  document.getElementById('loginOverlay').classList.add('show');
+  document.getElementById('userMenu').style.display = 'none';
+
+  loadTheme();initBgCanvas();
+
+  // Try auto-login with stored JWT (non-blocking, handles offline)
+  const loggedIn = await _autoLogin();
+
+  if (loggedIn) {
+    document.getElementById('loginOverlay').classList.remove('show');
+    document.getElementById('userMenu').style.display = 'flex';
+    document.getElementById('userNameDisplay').textContent = _currentUser?.username || '';
+    document.getElementById('userAvatar').textContent = (_currentUser?.username || '?').charAt(0).toUpperCase();
+    _startSync();
+  }
+
+  renderHome();renderSettings();
   // Auto-connect proxy silently in background (never blocks page)
   initProxyAutoConnect();
+  // Find local proxy for M3U8 streaming (avoids Worker CDN geo-block)
+  _findLocalProxy();
   // Keyboard shotcuts
   document.addEventListener('keydown',e=>{
     if(e.key==='Escape'){
@@ -3909,14 +4228,16 @@ function init(){
       selectedElements.clear();document.querySelectorAll('.journal-elem').forEach(de=>de.classList.remove('selected'));
     }
   });
-  // Demo data if empty
-  const ms=loadMovies();
-  if(!ms.length){
-    const demo=[
-      {id:genId(),title:'肖申克的救赎',type:'电影',watchDate:'2025-01-15',status:'已看',cover:'',rating:5,tags:['经典','剧情'],review:'希望是美好的，也许是人间至善',pages:[{id:genId(),elements:[]}],quotes:[{id:genId(),content:'有些鸟是关不住的，它们的羽毛太鲜亮了。',time:nowISO()},{id:genId(),content:'希望是美好的，也许是人间至善，而美好的事物永不消逝。',time:nowISO()}],createdAt:nowISO()},
-      {id:genId(),title:'星际穿越',type:'电影',watchDate:'2025-03-22',status:'已看',cover:'',rating:5,tags:['科幻','诺兰'],review:'爱是唯一可以超越时间与空间的事物',pages:[{id:genId(),elements:[]}],quotes:[],createdAt:nowISO()},
-      {id:genId(),title:'海贼王',type:'动漫',watchDate:'2025-06-01',status:'在看',cover:'',rating:5,tags:['热血','冒险'],review:'我不是英雄，我只做我想做的事',pages:[{id:genId(),elements:[]}],quotes:[{id:genId(),content:'人的梦想，是不会结束的！',time:nowISO()}],createdAt:nowISO()},
-    ];saveMovies(demo);
+  // Demo data if empty AND not logged in (logged-in users see their cloud data)
+  if (!loggedIn) {
+    const ms=loadMovies();
+    if(!ms.length){
+      const demo=[
+        {id:genId(),title:'肖申克的救赎',type:'电影',watchDate:'2025-01-15',status:'已看',cover:'',rating:5,tags:['经典','剧情'],review:'希望是美好的，也许是人间至善',pages:[{id:genId(),elements:[]}],quotes:[{id:genId(),content:'有些鸟是关不住的，它们的羽毛太鲜亮了。',time:nowISO()},{id:genId(),content:'希望是美好的，也许是人间至善，而美好的事物永不消逝。',time:nowISO()}],createdAt:nowISO()},
+        {id:genId(),title:'星际穿越',type:'电影',watchDate:'2025-03-22',status:'已看',cover:'',rating:5,tags:['科幻','诺兰'],review:'爱是唯一可以超越时间与空间的事物',pages:[{id:genId(),elements:[]}],quotes:[],createdAt:nowISO()},
+        {id:genId(),title:'海贼王',type:'动漫',watchDate:'2025-06-01',status:'在看',cover:'',rating:5,tags:['热血','冒险'],review:'我不是英雄，我只做我想做的事',pages:[{id:genId(),elements:[]}],quotes:[{id:genId(),content:'人的梦想，是不会结束的！',time:nowISO()}],createdAt:nowISO()},
+      ];saveMovies(demo);
+    }
   }
 }
 // ==================== MEDIA SEARCH & PLAYER ====================
@@ -3936,6 +4257,7 @@ const LOCAL_PROXY = (() => {
   return fb || LOCAL_FALLBACKS[0];
 })();
 let proxyReady = false;
+let _localProxyUrl = null; // First working local proxy (used for M3U8 streaming)
 let searchMediaType = 'video'; // 'video' | 'novel'
 let lastSearchType = '全部';
 
@@ -3955,6 +4277,34 @@ function initProxyAutoConnect() {
   _proxyFirstConnectDone = false;
   _backgroundPing();
   _proxyTimer = setInterval(() => _backgroundPing(), 3000);
+}
+
+/** Find first working LOCAL proxy (avoid Worker CDN geo-block for M3U8 streaming) */
+async function _findLocalProxy() {
+  // Already on local proxy? Just use current origin
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+    _localProxyUrl = window.location.origin;
+    console.log('[Proxy] Local proxy (self):', _localProxyUrl);
+    return;
+  }
+  // On Cloudflare domain: probe all local fallback URLs
+  console.log('[Proxy] Probing local proxies...');
+  for (const fb of LOCAL_FALLBACKS) {
+    try {
+      const r = await fetch(`${fb}/api/ping`, { signal: AbortSignal.timeout(2500) });
+      if (r.ok) {
+        const d = await r.json();
+        if (d.status === 'ok') {
+          _localProxyUrl = fb;
+          console.log('[Proxy] Local proxy found:', fb);
+          return;
+        }
+      }
+    } catch(e) {
+      // Expected for unavailable proxies (wrong scheme, firewall, etc.)
+    }
+  }
+  console.log('[Proxy] No local proxy available – will use Worker for M3U8');
 }
 
 /** Completely silent – updates proxyReady only, no visible UI */
@@ -4568,18 +4918,31 @@ function loadHls(url) {
               hlsInstance.startLoad();
               } else {
               console.error('[HLS] Network retries exhausted');
-              // Try local proxy fallback (Worker can't reach Chinese CDNs)
-              const fb = tryLocalFallback(url);
-              if (fb && fb !== url) {
-                console.log('[HLS] Switching to local proxy:', fb);
-                destroyHls();
-                cancelTimeout();
-                loadHls(fb);
-                return;
+              // Try each local proxy fallback (Worker can't reach Chinese CDNs)
+              // On HTTPS pages, skip HTTP proxies (blocked by Mixed Content policy)
+              const isHttps = window.location.protocol === 'https:';
+              let fbUrl = null;
+              const cdnParam = new URL(url).searchParams.get('url');
+              if (cdnParam && LOCAL_FALLBACKS && LOCAL_FALLBACKS.length > 0) {
+                for (const fb of LOCAL_FALLBACKS) {
+                  if (isHttps && fb.startsWith('http://')) {
+                    console.log('[HLS] Skipping HTTP proxy on HTTPS page:', fb);
+                    continue;
+                  }
+                  if (fb === _localProxyUrl) continue; // already tried and failed
+                  fbUrl = fb + '/api/m3u8?url=' + encodeURIComponent(cdnParam);
+                  if (fbUrl !== url) {
+                    console.log('[HLS] Trying fallback:', fbUrl);
+                    destroyHls();
+                    cancelTimeout();
+                    loadHls(fbUrl);
+                    return;
+                  }
+                }
               }
               destroyHls();
               cancelTimeout();
-              showPlayerError('加载视频源失败，请确保电脑端代理已启动并安装HTTPS证书');
+              showPlayerError('无法加载视频。请确认电脑端代理已启动（端口8765/8766），然后在代理页面安装HTTPS证书后重试。<br><a href="http://localhost:8765" target="_blank" style="color:var(--accent-bright);text-decoration:underline;">打开代理页面</a>');
             }
             break;
           case Hls.ErrorTypes.MEDIA_ERROR:
@@ -4646,11 +5009,12 @@ function tryLocalFallback(currentUrl) {
   } catch(e) { return null; }
 }
 
-// Build M3U8 proxy URL: prefer local proxy (can reach Chinese CDNs), fallback to CF Worker
+// Build M3U8 proxy URL: prefer local proxy (no CDN geo-block), fallback to Worker
 function buildM3u8Url(cdnUrl) {
-  const cfUrl = `${PROXY}/api/m3u8?url=${encodeURIComponent(cdnUrl)}`;
-  const localUrl = tryLocalFallback(cfUrl);
-  return localUrl || cfUrl;
+  if (_localProxyUrl) {
+    return `${_localProxyUrl}/api/m3u8?url=${encodeURIComponent(cdnUrl)}`;
+  }
+  return `${PROXY}/api/m3u8?url=${encodeURIComponent(cdnUrl)}`;
 }
 
 // Extract play URL from search result item (try multiple possible field names)
